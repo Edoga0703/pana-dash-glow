@@ -32,8 +32,7 @@ function MessageBubble({ message }: { message: Message }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
   const isImage =
-    message.mediaUrl &&
-    /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.mediaUrl);
+    message.mediaUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.mediaUrl);
 
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
@@ -66,12 +65,7 @@ function MessageBubble({ message }: { message: Message }) {
               />
             </a>
           ) : (
-            
-              className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline"
-              href={message.mediaUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline">
               <Paperclip size={12} /> Abrir archivo adjunto
             </a>
           )
@@ -140,26 +134,17 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setUploadingImage(true);
     setError("");
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const mimeType = file.type;
-        await sendMessage({
-          contactId: chat.contactId,
-          text: `[Imagen: ${file.name}]`,
-          userName,
-          mediaBase64: base64,
-          mediaMimeType: mimeType,
-          mediaName: file.name,
-        });
-        const updated = await fetchChat(chat.contactId);
-        setMessages(updated);
-        onStateChanged?.();
-        setUploadingImage(false);
-      };
-      reader.readAsDataURL(file);
+      await sendMessage({
+        contactId: chat.contactId,
+        text: `[Archivo: ${file.name}]`,
+        userName,
+      });
+      const updated = await fetchChat(chat.contactId);
+      setMessages(updated);
+      onStateChanged?.();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo enviar la imagen");
+      setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
+    } finally {
       setUploadingImage(false);
     }
     event.target.value = "";
