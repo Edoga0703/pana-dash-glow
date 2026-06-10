@@ -34,6 +34,9 @@ export interface SendMessagePayload {
   contactId: string;
   text: string;
   userName: string;
+  mediaBase64?: string;
+  mediaMimeType?: string;
+  mediaName?: string;
 }
 
 export interface ChangeStatePayload {

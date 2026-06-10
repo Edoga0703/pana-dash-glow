@@ -3,14 +3,18 @@ import {
   Bot,
   Check,
   CircleUserRound,
+  Image,
   LoaderCircle,
   MessageSquareOff,
+  Paperclip,
   Pause,
   Send,
   UserRoundCheck,
+  Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
 import { changeState, fetchChat, sendMessage } from "../services/api";
+import QuickReplies from "./QuickReplies";
 
 interface ChatViewProps {
   chat: Chat;
@@ -27,6 +31,10 @@ function formatTime(value: string): string {
 function MessageBubble({ message }: { message: Message }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
+  const isImage =
+    message.mediaUrl &&
+    /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.mediaUrl);
+
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
       <div
@@ -44,16 +52,29 @@ function MessageBubble({ message }: { message: Message }) {
             {human ? "Administrador" : "Pana Bot"}
           </div>
         )}
-        <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+        {message.text && (
+          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+        )}
         {message.mediaUrl && (
-          <a
-            className="mt-2 block text-xs text-cyan-300 underline"
-            href={message.mediaUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Abrir archivo adjunto
-          </a>
+          isImage ? (
+            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
+              <img
+                src={message.mediaUrl}
+                alt="adjunto"
+                className="max-w-full rounded-md border border-white/10"
+                style={{ maxHeight: 220 }}
+              />
+            </a>
+          ) : (
+            
+              className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline"
+              href={message.mediaUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Paperclip size={12} /> Abrir archivo adjunto
+            </a>
+          )
         )}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-50">
           {formatTime(message.createdAt)}
@@ -71,7 +92,10 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [sending, setSending] = useState(false);
   const [changingState, setChangingState] = useState(false);
   const [error, setError] = useState("");
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -79,13 +103,12 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setText("");
     setLoading(true);
     setError("");
+    setShowQuickReplies(false);
     fetchChat(chat.contactId)
       .then((result) => active && setMessages(result))
       .catch((reason) => active && setError(reason.message || "No se pudo cargar el historial"))
       .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [chat.contactId]);
 
   useEffect(() => {
@@ -109,6 +132,37 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    setError("");
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1];
+        const mimeType = file.type;
+        await sendMessage({
+          contactId: chat.contactId,
+          text: `[Imagen: ${file.name}]`,
+          userName,
+          mediaBase64: base64,
+          mediaMimeType: mimeType,
+          mediaName: file.name,
+        });
+        const updated = await fetchChat(chat.contactId);
+        setMessages(updated);
+        onStateChanged?.();
+        setUploadingImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "No se pudo enviar la imagen");
+      setUploadingImage(false);
+    }
+    event.target.value = "";
   }
 
   async function handleState(state: "bot" | "humano" | "pausado") {
@@ -201,8 +255,40 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
       )}
 
-      <footer className="border-t border-white/8 bg-[#141820] p-3">
+      <footer className="relative border-t border-white/8 bg-[#141820] p-3">
+        {showQuickReplies && (
+          <QuickReplies
+            onSelect={(t) => setText(t)}
+            onClose={() => setShowQuickReplies(false)}
+          />
+        )}
         <div className="mx-auto flex max-w-4xl items-end gap-2">
+          <button
+            onClick={() => setShowQuickReplies((v) => !v)}
+            title="Respuestas rápidas"
+            className={`grid size-11 shrink-0 place-items-center rounded-md border transition-colors ${
+              showQuickReplies
+                ? "border-cyan-400/40 bg-cyan-400/15 text-cyan-300"
+                : "border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
+            }`}
+          >
+            <Zap size={18} />
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Enviar imagen o archivo"
+            disabled={uploadingImage}
+            className="grid size-11 shrink-0 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300 disabled:opacity-50"
+          >
+            {uploadingImage ? <LoaderCircle size={18} className="animate-spin" /> : <Image size={18} />}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,.pdf,.doc,.docx"
+            className="hidden"
+            onChange={handleImageUpload}
+          />
           <textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
