@@ -78,21 +78,44 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Pana Bot — Admin Dashboard | CuentasTupana" },
-      { name: "description", content: "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana." },
+      {
+        name: "description",
+        content:
+          "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana.",
+      },
       { name: "author", content: "CuentasTupana" },
       { property: "og:title", content: "Pana Bot — Admin Dashboard | CuentasTupana" },
-      { property: "og:description", content: "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana." },
+      {
+        property: "og:description",
+        content:
+          "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Pana Bot — Admin Dashboard | CuentasTupana" },
-      { name: "twitter:description", content: "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/12dd90ef-1738-4b87-b978-7b0113c897cb/id-preview-b9b681b3--5f265a16-1bd0-4cc8-a5d7-8d412a537728.lovable.app-1781076440559.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/12dd90ef-1738-4b87-b978-7b0113c897cb/id-preview-b9b681b3--5f265a16-1bd0-4cc8-a5d7-8d412a537728.lovable.app-1781076440559.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Panel de administración premium para Pana Bot, el bot de WhatsApp de ventas de cuentas de streaming de CuentasTupana.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/12dd90ef-1738-4b87-b978-7b0113c897cb/id-preview-b9b681b3--5f265a16-1bd0-4cc8-a5d7-8d412a537728.lovable.app-1781076440559.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/12dd90ef-1738-4b87-b978-7b0113c897cb/id-preview-b9b681b3--5f265a16-1bd0-4cc8-a5d7-8d412a537728.lovable.app-1781076440559.png",
+      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap",
+      },
       { rel: "stylesheet", href: appCss },
     ],
   }),
