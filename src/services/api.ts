@@ -9,6 +9,9 @@ function getHeaders(): Record<string, string> {
 }
 
 function buildUrl(path: string): string {
+  if (!API_CONFIG.baseUrl) {
+    throw new Error('Configura VITE_N8N_BASE_URL para conectar el CRM');
+  }
   return `${API_CONFIG.baseUrl}${path}`;
 }
 
@@ -32,7 +35,7 @@ export async function fetchInbox(): Promise<InboxResponse> {
 }
 
 export async function fetchChat(contactId: string, page = 1): Promise<Message[]> {
-  const url = `${buildUrl(API_CONFIG.endpoints.chat)}/${contactId}?page=${page}`;
+  const url = `${buildUrl(API_CONFIG.endpoints.chat)}/${encodeURIComponent(contactId)}?page=${page}`;
   const res = await fetch(url, {
     method: 'GET',
     headers: getHeaders(),
@@ -47,7 +50,7 @@ export async function fetchChat(contactId: string, page = 1): Promise<Message[]>
 }
 
 export async function syncMessages(contactId: string, cursor: number): Promise<Message[]> {
-  const url = `${buildUrl(API_CONFIG.endpoints.sync)}?contactId=${contactId}&cursor=${cursor}`;
+  const url = `${buildUrl(API_CONFIG.endpoints.sync)}?contactId=${encodeURIComponent(contactId)}&cursor=${cursor}`;
   const res = await fetch(url, {
     method: 'GET',
     headers: getHeaders(),

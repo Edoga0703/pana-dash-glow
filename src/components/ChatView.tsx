@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Bot, Check, CircleUserRound, LoaderCircle, MessageSquareOff, Pause, Send, UserRoundCheck } from 'lucide-react';
 import type { Chat, Message } from '../types';
-import { fetchChat, sendMessage, changeState } from '../services/api';
+import { changeState, fetchChat, sendMessage } from '../services/api';
 
 interface ChatViewProps {
   chat: Chat;
@@ -8,67 +9,38 @@ interface ChatViewProps {
   onStateChanged?: () => void;
 }
 
-function formatTime(dateStr: string): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+function formatTime(value: string): string {
+  return value ? new Date(value).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '';
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return 'Hoy';
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Ayer';
-  return d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function groupByDate(messages: Message[]): { date: string; messages: Message[] }[] {
-  const groups: Record<string, Message[]> = {};
-  for (const msg of messages) {
-    const key = formatDate(msg.createdAt);
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(msg);
-  }
-  return Object.entries(groups).map(([date, messages]) => ({ date, messages }));
-}
-
-function MessageBubble({ msg }: { msg: Message }) {
-  const isClient = msg.role === 'user';
-  const isHuman = msg.senderType === 'human';
-
+function MessageBubble({ message }: { message: Message }) {
+  const incoming = message.role === 'user';
+  const human = message.senderType === 'human';
   return (
-    <div className={`flex ${isClient ? 'justify-start' : 'justify-end'} mb-2`}>
-      <div
-        className={`max-w-[75%] rounded-xl px-3 py-2 ${
-          isClient
-            ? 'bg-gray-700 text-gray-100'
-            : isHuman
-            ? 'bg-amber-700 text-white'
-            : 'bg-emerald-700 text-white'
-        }`}
-      >
-        {!isClient && (
-          <p className="text-[10px] font-medium opacity-70 mb-0.5">
-            {isHuman ? 'Admin' : 'Pana Bot'}
-          </p>
+    <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
+      <div className={`max-w-[78%] rounded-md border px-3 py-2 shadow-sm ${
+        incoming
+          ? 'border-white/8 bg-[#222731] text-slate-100'
+          : human
+            ? 'border-cyan-300/20 bg-cyan-500/15 text-cyan-50'
+            : 'border-emerald-300/15 bg-emerald-500/15 text-emerald-50'
+      }`}>
+        {!incoming && (
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-65">
+            {human ? <CircleUserRound size={11} /> : <Bot size={11} />}
+            {human ? 'Administrador' : 'Pana Bot'}
+          </div>
         )}
-        <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
-        {msg.mediaUrl && (
-          <a
-            href={msg.mediaUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs underline opacity-80 mt-1 block"
-          >
-            Ver adjunto
+        <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+        {message.mediaUrl && (
+          <a className="mt-2 block text-xs text-cyan-300 underline" href={message.mediaUrl} target="_blank" rel="noreferrer">
+            Abrir archivo adjunto
           </a>
         )}
-        <p className={`text-[10px] mt-1 text-right ${isClient ? 'text-gray-400' : 'opacity-60'}`}>
-          {formatTime(msg.createdAt)}
-        </p>
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-50">
+          {formatTime(message.createdAt)}
+          {!incoming && <Check size={11} />}
+        </div>
       </div>
     </div>
   );
@@ -79,174 +51,130 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [changingState, setChangingState] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Cargar mensajes al seleccionar chat
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
     setLoading(true);
-    setMessages([]);
     setError('');
-
     fetchChat(chat.contactId)
-      .then((msgs) => {
-        if (!cancelled) {
-          // La API devuelve DESC, revertir a ASC
-          setMessages([...msgs].reverse());
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err.message);
-          setLoading(false);
-        }
-      });
-
-    return () => { cancelled = true; };
+      .then((result) => active && setMessages(result))
+      .catch((reason) => active && setError(reason.message || 'No se pudo cargar el historial'))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
   }, [chat.contactId]);
 
-  // Scroll al fondo cuando llegan mensajes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Enviar mensaje
   async function handleSend() {
-    const trimmed = text.trim();
-    if (!trimmed || sending) return;
-
+    const message = text.trim();
+    if (!message || sending) return;
     setSending(true);
     setError('');
-
     try {
-      await sendMessage({
-        contactId: chat.contactId,
-        text: trimmed,
-        userName,
-      });
-
-      // Agregar mensaje local inmediatamente
-      const localMsg: Message = {
+      await sendMessage({ contactId: chat.contactId, text: message, userName });
+      setMessages((current) => [...current, {
         id: `local-${Date.now()}`,
         role: 'assistant',
-        text: trimmed,
-        createdAt: new Date().toISOString(),
         senderType: 'human',
+        text: message,
+        createdAt: new Date().toISOString(),
         isRead: true,
-      };
-      setMessages((prev) => [...prev, localMsg]);
+      }]);
       setText('');
-      inputRef.current?.focus();
-    } catch (err: any) {
-      setError(err.message || 'Error al enviar');
+      onStateChanged?.();
+    } catch (reason: any) {
+      setError(reason.message || 'No se pudo enviar el mensaje');
     } finally {
       setSending(false);
     }
   }
 
-  // Cambiar estado
-  async function handleChangeState(state: 'bot' | 'humano' | 'pausado') {
+  async function handleState(state: 'bot' | 'humano' | 'pausado') {
+    setChangingState(true);
+    setError('');
     try {
       await changeState({ contactId: chat.contactId, state, userName });
       onStateChanged?.();
-    } catch (err: any) {
-      setError(err.message || 'Error al cambiar estado');
+    } catch (reason: any) {
+      setError(reason.message || 'No se pudo cambiar el estado');
+    } finally {
+      setChangingState(false);
     }
   }
-
-  // Enter para enviar, Shift+Enter para nueva linea
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  const grouped = groupByDate(messages);
 
   return (
-    <div className="flex flex-col h-full bg-gray-950">
-      {/* Header del chat */}
-      <div className="px-4 py-3 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
-        <div>
-          <h3 className="text-white font-semibold">{chat.name}</h3>
-          <p className="text-xs text-gray-400">{chat.phone}</p>
+    <section className="flex h-full min-h-0 flex-col bg-[#0d1015]">
+      <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/8 bg-[#141820] px-4">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-white">{chat.name}</h2>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+            <span>{chat.phone}</span><span>·</span>
+            <span className={chat.status === 'bot' ? 'text-emerald-300' : 'text-amber-200'}>
+              {chat.status === 'bot' ? 'IA habilitada' : chat.status === 'humano' ? 'Atención humana' : 'Chat pausado'}
+            </span>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {chat.status !== 'humano' && (
-            <button
-              onClick={() => handleChangeState('humano')}
-              className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors"
-            >
-              Tomar chat
+            <button disabled={changingState} onClick={() => handleState('humano')} className="flex h-9 items-center gap-2 rounded-md border border-amber-300/20 bg-amber-400/10 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-400/15 disabled:opacity-50">
+              <UserRoundCheck size={15} /> <span className="hidden sm:inline">Tomar chat</span>
+            </button>
+          )}
+          {chat.status !== 'pausado' && (
+            <button disabled={changingState} onClick={() => handleState('pausado')} title="Pausar chat" className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 disabled:opacity-50">
+              <Pause size={15} />
             </button>
           )}
           {chat.status !== 'bot' && (
-            <button
-              onClick={() => handleChangeState('bot')}
-              className="text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
-            >
-              Reactivar bot
+            <button disabled={changingState} onClick={() => handleState('bot')} className="flex h-9 items-center gap-2 rounded-md bg-emerald-500 px-3 text-xs font-bold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50">
+              <Bot size={15} /> <span className="hidden sm:inline">Reactivar IA</span>
             </button>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Mensajes */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {loading ? (
-          <div className="text-center text-gray-500 text-sm mt-8">Cargando mensajes...</div>
+          <div className="grid h-full place-items-center text-slate-500"><LoaderCircle className="animate-spin" /></div>
         ) : messages.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm mt-8">Sin mensajes</div>
+          <div className="grid h-full place-items-center text-center text-slate-600">
+            <div><MessageSquareOff className="mx-auto mb-3" /><p className="text-sm">Todavía no hay mensajes guardados.</p></div>
+          </div>
         ) : (
-          grouped.map((group) => (
-            <div key={group.date}>
-              <div className="flex justify-center my-3">
-                <span className="text-[11px] text-gray-500 bg-gray-800/50 px-3 py-1 rounded-full">
-                  {group.date}
-                </span>
-              </div>
-              {group.messages.map((msg) => (
-                <MessageBubble key={msg.id} msg={msg} />
-              ))}
-            </div>
-          ))
+          <div className="mx-auto flex max-w-4xl flex-col gap-2">
+            {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+            <div ref={bottomRef} />
+          </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="px-4 py-2 bg-red-900/50 text-red-300 text-xs">
-          {error}
-        </div>
-      )}
+      {error && <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">{error}</div>}
 
-      {/* Input */}
-      <div className="p-3 border-t border-gray-800 bg-gray-900">
-        <div className="flex items-end gap-2">
+      <footer className="border-t border-white/8 bg-[#141820] p-3">
+        <div className="mx-auto flex max-w-4xl items-end gap-2">
           <textarea
-            ref={inputRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Escribe un mensaje..."
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
             rows={1}
-            className="flex-1 px-3 py-2 bg-gray-800 text-gray-200 text-sm rounded-lg border border-gray-700 focus:outline-none focus:border-emerald-500 placeholder-gray-500 resize-none max-h-32"
-            style={{ minHeight: '40px' }}
+            placeholder="Escribe una respuesta..."
+            className="min-h-11 max-h-32 flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
           />
-          <button
-            onClick={handleSend}
-            disabled={!text.trim() || sending}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
-          >
-            {sending ? '...' : 'Enviar'}
+          <button disabled={!text.trim() || sending} onClick={handleSend} title="Enviar mensaje" className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600">
+            {sending ? <LoaderCircle size={18} className="animate-spin" /> : <Send size={18} />}
           </button>
         </div>
-      </div>
-    </div>
+      </footer>
+    </section>
   );
 }
