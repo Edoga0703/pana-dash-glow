@@ -1,0 +1,27 @@
+name: Deploy CRM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy en VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            cd /opt/cuentastupana-crm
+            git pull origin main
+            cd /opt/cuentastupana-n8n
+            docker compose build \
+              --build-arg VITE_N8N_BASE_URL=https://n8n.cuentastupana.com \
+              --build-arg VITE_AUTH_HEADER_NAME=X-CRM-SECRET \
+              --build-arg VITE_AUTH_HEADER_VALUE=28031597Ef. \
+              crm
+            docker compose up -d crm
