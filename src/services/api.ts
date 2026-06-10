@@ -1,7 +1,3 @@
-// ══════════════════════════════════════════════════════════
-// API SERVICE — Conexion con n8n CRM endpoints
-// ══════════════════════════════════════════════════════════
-
 import { API_CONFIG } from '../config/api';
 import type { InboxResponse, Message, SendMessagePayload, ChangeStatePayload } from '../types';
 
@@ -16,17 +12,25 @@ function buildUrl(path: string): string {
   return `${API_CONFIG.baseUrl}${path}`;
 }
 
-// ── Bandeja de chats ──────────────────────────────────────
+async function safeJson(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text || !text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
 export async function fetchInbox(): Promise<InboxResponse> {
   const res = await fetch(buildUrl(API_CONFIG.endpoints.inbox), {
     method: 'GET',
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error(`Inbox error: ${res.status}`);
-  return res.json();
+  return safeJson(res);
 }
 
-// ── Historial de un chat ──────────────────────────────────
 export async function fetchChat(contactId: string, page = 1): Promise<Message[]> {
   const url = `${buildUrl(API_CONFIG.endpoints.chat)}/${contactId}?page=${page}`;
   const res = await fetch(url, {
@@ -34,11 +38,14 @@ export async function fetchChat(contactId: string, page = 1): Promise<Message[]>
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error(`Chat error: ${res.status}`);
-  const data = await res.json();
-  return data.messages || data.chats || data || [];
+  const data = await safeJson(res);
+  if (Array.isArray(data)) return data;
+  if (data.messages && Array.isArray(data.messages)) return data.messages;
+  if (data.chats && Array.isArray(data.chats)) return data.chats;
+  if (data.data && Array.isArray(data.data)) return data.data;
+  return [];
 }
 
-// ── Sync incremental ──────────────────────────────────────
 export async function syncMessages(contactId: string, cursor: number): Promise<Message[]> {
   const url = `${buildUrl(API_CONFIG.endpoints.sync)}?contactId=${contactId}&cursor=${cursor}`;
   const res = await fetch(url, {
@@ -46,28 +53,26 @@ export async function syncMessages(contactId: string, cursor: number): Promise<M
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error(`Sync error: ${res.status}`);
-  const data = await res.json();
+  const data = await safeJson(res);
   return data.messages || data || [];
 }
 
-// ── Enviar mensaje como humano ────────────────────────────
-export async function sendMessage(payload: SendMessagePayload): Promise<{ messageId: string }> {
+export async function sendMessage(payload: SendMessagePayload): Promise<any> {
   const res = await fetch(buildUrl(API_CONFIG.endpoints.send), {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Send error: ${res.status}`);
-  return res.json();
+  return safeJson(res);
 }
 
-// ── Cambiar estado del chat ───────────────────────────────
-export async function changeState(payload: ChangeStatePayload): Promise<{ contactId: string; botActive: boolean }> {
+export async function changeState(payload: ChangeStatePayload): Promise<any> {
   const res = await fetch(buildUrl(API_CONFIG.endpoints.state), {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`State error: ${res.status}`);
-  return res.json();
+  return safeJson(res);
 }
