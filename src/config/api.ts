@@ -1,17 +1,19 @@
 // ══════════════════════════════════════════════════════════
 // CONFIGURACION API — CuentasTupana CRM
-// Cambia estos valores segun tu entorno
+// Define los valores en .env (VITE_N8N_BASE_URL, VITE_AUTH_HEADER_NAME, VITE_AUTH_HEADER_VALUE)
+// IMPORTANTE: la URL DEBE ser https:// si la app corre en https (mixed content)
 // ══════════════════════════════════════════════════════════
 
 export const API_CONFIG = {
-  // URL base de tu n8n (sin /webhook al final)
-  baseUrl: import.meta.env.VITE_N8N_BASE_URL || ''https://mac-nature-individual-sum.trycloudflare.com'',
+  baseUrl:
+    (import.meta.env.VITE_N8N_BASE_URL as string | undefined) ||
+    'https://mac-nature-individual-sum.trycloudflare.com',
 
-  // Header de autenticacion para los webhooks
-authHeaderName: ... 'X-CRM-SECRET',
-authHeaderValue: ... 'pana2025',
+  authHeaderName:
+    (import.meta.env.VITE_AUTH_HEADER_NAME as string | undefined) || 'X-CRM-SECRET',
+  authHeaderValue:
+    (import.meta.env.VITE_AUTH_HEADER_VALUE as string | undefined) || 'pana2025',
 
-  // Endpoints del CRM (paths relativos)
   endpoints: {
     inbox: '/webhook/pana-crm-inbox-v1',
     chat: '/webhook/pana-crm-chat-v1', // + /:contactId
@@ -20,6 +22,5 @@ authHeaderValue: ... 'pana2025',
     state: '/webhook/pana-crm-state-v1',
   },
 
-  // Intervalo de polling en ms (cada cuanto refresca la bandeja)
   pollingInterval: 8000,
 };
