@@ -134,17 +134,37 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setUploadingImage(true);
     setError("");
     try {
-      await sendMessage({
-        contactId: chat.contactId,
-        text: `[Archivo: ${file.name}]`,
-        userName,
-      });
-      const updated = await fetchChat(chat.contactId);
-      setMessages(updated);
-      onStateChanged?.();
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          const response = await fetch("https://n8n.cuentastupana.com/webhook/pana-crm-media-v1", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CRM-SECRET": "28031597Ef.",
+            },
+            body: JSON.stringify({
+              contactId: chat.contactId,
+              fileName: file.name,
+              mimeType: file.type,
+              base64,
+              userName,
+            }),
+          });
+          if (!response.ok) throw new Error("Error al subir el archivo");
+          const updated = await fetchChat(chat.contactId);
+          setMessages(updated);
+          onStateChanged?.();
+        } catch (reason: unknown) {
+          setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
+        } finally {
+          setUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
-    } finally {
+      setError(reason instanceof Error ? reason.message : "Error al leer el archivo");
       setUploadingImage(false);
     }
     event.target.value = "";
