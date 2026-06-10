@@ -5,7 +5,7 @@
 
 export const API_CONFIG = {
   // URL base de tu n8n (sin /webhook al final)
-  baseUrl: import.meta.env.VITE_N8N_BASE_URL || 'http://167.233.33.158:5678',
+  baseUrl: import.meta.env.VITE_N8N_BASE_URL || ''https://mac-nature-individual-sum.trycloudflare.com'',
 
   // Header de autenticacion para los webhooks
 authHeaderName: ... 'X-CRM-SECRET',
