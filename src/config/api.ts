@@ -8,8 +8,8 @@ export const API_CONFIG = {
   baseUrl: import.meta.env.VITE_N8N_BASE_URL || 'http://167.233.33.158:5678',
 
   // Header de autenticacion para los webhooks
-  authHeaderName: import.meta.env.VITE_AUTH_HEADER_NAME || 'X-Pana-Key',
-  authHeaderValue: import.meta.env.VITE_AUTH_HEADER_VALUE || 'CAMBIAR_POR_TU_KEY',
+authHeaderName: ... 'X-CRM-SECRET',
+authHeaderValue: ... 'pana2025',
 
   // Endpoints del CRM (paths relativos)
   endpoints: {
