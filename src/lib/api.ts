@@ -27,18 +27,35 @@ export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {})
     throw new Error(`API ${res.status}: ${await res.text().catch(() => res.statusText)}`);
   }
   const ct = res.headers.get("content-type") ?? "";
-  return (ct.includes("application/json") ? await res.json() : (await res.text() as unknown)) as T;
+  return (
+    ct.includes("application/json") ? await res.json() : ((await res.text()) as unknown)
+  ) as T;
 }
 
 export const isApiConfigured = () => Boolean(BASE_URL);
 
 // ===== Endpoints sugeridos (ajusta a tu n8n) =====
 export const api = {
-  getSettings:    () => apiFetch<{ exchangeRate: number; botActive: boolean; delayMin: number; delayMax: number; bufferMinutes: number }>("/settings"),
-  saveSettings:   (data: Record<string, unknown>) => apiFetch("/settings", { method: "POST", json: data }),
-  getInventory:   () => apiFetch<Record<string, boolean>>("/inventory"),
-  setInventory:   (service: string, available: boolean) => apiFetch("/inventory", { method: "POST", json: { service, available } }),
-  getPausedChats: () => apiFetch<Array<{ id: string; name: string; phone: string; reason: string; pausedAt: string }>>("/chats/paused"),
-  resumeChat:     (id: string) => apiFetch(`/chats/${id}/resume`, { method: "POST" }),
-  getLogs:        () => apiFetch<Array<{ level: "INFO" | "WARN" | "ERROR"; message: string; timestamp: string }>>("/logs"),
+  getSettings: () =>
+    apiFetch<{
+      exchangeRate: number;
+      botActive: boolean;
+      delayMin: number;
+      delayMax: number;
+      bufferMinutes: number;
+    }>("/settings"),
+  saveSettings: (data: Record<string, unknown>) =>
+    apiFetch("/settings", { method: "POST", json: data }),
+  getInventory: () => apiFetch<Record<string, boolean>>("/inventory"),
+  setInventory: (service: string, available: boolean) =>
+    apiFetch("/inventory", { method: "POST", json: { service, available } }),
+  getPausedChats: () =>
+    apiFetch<Array<{ id: string; name: string; phone: string; reason: string; pausedAt: string }>>(
+      "/chats/paused",
+    ),
+  resumeChat: (id: string) => apiFetch(`/chats/${id}/resume`, { method: "POST" }),
+  getLogs: () =>
+    apiFetch<Array<{ level: "INFO" | "WARN" | "ERROR"; message: string; timestamp: string }>>(
+      "/logs",
+    ),
 };
