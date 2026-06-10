@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, MessageSquareText, RefreshCw, ServerOff } from 'lucide-react';
 import type { Chat } from '../types';
 import { fetchInbox } from '../services/api';
-import { API_CONFIG } from '../config/api';
+import { API_CONFIG, isCrmApiConfigured } from '../config/api';
 import ChatSidebar from '../components/ChatSidebar';
 import ChatView from '../components/ChatView';
 
@@ -11,103 +12,84 @@ export default function Dashboard() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadInbox = useCallback(async () => {
+  const loadInbox = useCallback(async (silent = false) => {
+    if (!isCrmApiConfigured) {
+      setError('Falta configurar la conexión con n8n.');
+      setLoading(false);
+      return;
+    }
+    if (silent) setRefreshing(true);
     try {
       const data = await fetchInbox();
       if (data.ok && Array.isArray(data.chats)) {
         setChats(data.chats);
-        // Actualizar el chat seleccionado si existe
-        if (selected) {
-          const updated = data.chats.find((c) => c.contactId === selected.contactId);
-          if (updated) setSelected(updated);
-        }
+        setSelected((current) => current
+          ? data.chats.find((chat) => chat.contactId === current.contactId) || current
+          : current);
       }
       setError('');
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar inbox');
+    } catch (reason: any) {
+      setError(reason.message || 'No se pudo conectar con el Mini CRM');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [selected]);
-
-  // Carga inicial
-  useEffect(() => {
-    loadInbox();
   }, []);
 
-  // Polling automatico
+  useEffect(() => { loadInbox(); }, [loadInbox]);
   useEffect(() => {
-    const interval = setInterval(loadInbox, API_CONFIG.pollingInterval);
-    return () => clearInterval(interval);
+    const timer = window.setInterval(() => loadInbox(true), API_CONFIG.pollingInterval);
+    return () => window.clearInterval(timer);
   }, [loadInbox]);
 
-  function handleSelect(chat: Chat) {
-    setSelected(chat);
-  }
-
-  function handleStateChanged() {
-    loadInbox();
-  }
-
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100">
-      {/* Sidebar */}
-      <div className="w-80 shrink-0 hidden md:flex flex-col">
-        <ChatSidebar
-          chats={chats}
-          selectedId={selected?.contactId || null}
-          onSelect={handleSelect}
-          loading={loading}
-        />
-      </div>
-
-      {/* Mobile sidebar toggle + sidebar */}
-      <div className={`md:hidden absolute inset-0 z-20 ${selected ? 'hidden' : 'flex'}`}>
-        <div className="w-full">
+    <main className="h-dvh overflow-hidden bg-[#0d1015] text-slate-100">
+      <div className="grid h-full min-h-0 md:grid-cols-[360px_minmax(0,1fr)]">
+        <div className={`${selected ? 'hidden md:block' : 'block'} min-h-0`}>
           <ChatSidebar
             chats={chats}
-            selectedId={null}
-            onSelect={handleSelect}
+            selectedId={selected?.contactId || null}
+            onSelect={setSelected}
             loading={loading}
           />
         </div>
-      </div>
 
-      {/* Chat view */}
-      <div className="flex-1 flex flex-col">
-        {error && !selected && (
-          <div className="p-4 bg-red-900/30 text-red-300 text-sm text-center">
-            {error}
-          </div>
-        )}
-
-        {selected ? (
-          <>
-            {/* Boton volver en mobile */}
-            <button
-              onClick={() => setSelected(null)}
-              className="md:hidden px-3 py-2 bg-gray-900 border-b border-gray-800 text-gray-400 text-sm hover:text-white"
-            >
-              ← Volver a chats
-            </button>
-            <ChatView
-              chat={selected}
-              userName={USER_NAME}
-              onStateChanged={handleStateChanged}
-            />
-          </>
-        ) : (
-          <div className="flex-1 hidden md:flex items-center justify-center">
-            <div className="text-center text-gray-600">
-              <p className="text-4xl mb-3">💬</p>
-              <p className="text-lg font-medium">CuentasTupana CRM</p>
-              <p className="text-sm mt-1">Selecciona una conversacion para comenzar</p>
-            </div>
-          </div>
-        )}
+        <div className={`${selected ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-col`}>
+          {selected ? (
+            <>
+              <button onClick={() => setSelected(null)} className="flex h-11 items-center gap-2 border-b border-white/8 bg-[#11141a] px-4 text-xs text-slate-400 md:hidden">
+                <ArrowLeft size={15} /> Conversaciones
+              </button>
+              <div className="min-h-0 flex-1">
+                <ChatView chat={selected} userName={USER_NAME} onStateChanged={() => loadInbox(true)} />
+              </div>
+            </>
+          ) : (
+            <section className="relative grid h-full place-items-center overflow-hidden">
+              <button onClick={() => loadInbox(true)} className="absolute right-5 top-5 grid size-9 place-items-center rounded-md border border-white/10 text-slate-500 hover:bg-white/5 hover:text-slate-300" title="Actualizar bandeja">
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+              </button>
+              <div className="max-w-sm px-6 text-center">
+                <div className="mx-auto mb-4 grid size-14 place-items-center rounded-md border border-cyan-300/15 bg-cyan-400/10 text-cyan-300">
+                  {error ? <ServerOff size={25} /> : <MessageSquareText size={25} />}
+                </div>
+                <h2 className="text-lg font-semibold text-white">{error ? 'Conexión pendiente' : 'Centro de conversaciones'}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  {error || 'Selecciona un chat para consultar el historial y responder desde el CRM.'}
+                </p>
+                {error && (
+                  <button onClick={() => loadInbox()} className="mt-5 h-9 rounded-md bg-cyan-400 px-4 text-xs font-bold text-slate-950">
+                    Intentar nuevamente
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,10 +1,6 @@
-// ══════════════════════════════════════════════════════════
-// TIPOS — CuentasTupana CRM
-// ══════════════════════════════════════════════════════════
-
 export interface Chat {
   contactId: string;
-  conversationId: string;
+  conversationId: string | null;
   name: string;
   phone: string;
   lastMessage: string;
@@ -12,8 +8,8 @@ export interface Chat {
   status: 'bot' | 'humano' | 'pausado';
   botActive: boolean;
   humanOverride: boolean;
-  reason?: string;
-  lastMessageTs: string;
+  reason?: string | null;
+  lastMessageTs: string | null;
   updatedAt: string;
 }
 
@@ -26,7 +22,7 @@ export interface Message {
   appId?: string;
   senderType?: 'bot' | 'human' | 'client';
   ghlMessageId?: string;
-  isRead: boolean;
+  isRead?: boolean;
 }
 
 export interface InboxResponse {
