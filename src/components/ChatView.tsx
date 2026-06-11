@@ -277,6 +277,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   useEffect(() => {
     let active = true;
     chatIdRef.current = chat.contactId;
+    initialUnreadRef.current = chat.unreadCount || 0;
+    didInitialScrollRef.current = false;
     setMessages([]);
     setText("");
     setLoading(true);
@@ -287,7 +289,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       .catch((reason) => active && setError(reason.message || "No se pudo cargar el historial"))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [chat.contactId]);
+  }, [chat.contactId, chat.unreadCount]);
 
   useEffect(() => {
     const interval = setInterval(() => {
