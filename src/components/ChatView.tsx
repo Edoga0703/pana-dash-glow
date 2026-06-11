@@ -2,22 +2,55 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   CircleUserRound,
+  Copy,
   Image,
   LoaderCircle,
   MessageSquareOff,
   Paperclip,
   Pause,
   Pencil,
+  Search,
   Send,
   UserPlus,
   UserRoundCheck,
+  X,
   Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
-import { changeState, fetchChat, sendMessage } from "../services/api";
+import { changeState, fetchChat, registerContact, sendMedia, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
+import { supabase } from "@/integrations/supabase/client";
 import QuickReplies from "./QuickReplies";
+
+function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(phone || "");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {}
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={copied ? "Copiado" : "Copiar número"}
+      className={`group inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -mx-1.5 text-xs text-slate-400 hover:text-emerald-300 hover:bg-white/5 transition-colors ${className}`}
+    >
+      <span className="text-slate-500">Tel:</span>
+      <span className="tabular-nums">{phone}</span>
+      {copied ? (
+        <Check size={11} className="text-emerald-400" />
+      ) : (
+        <Copy size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+      )}
+    </button>
+  );
+}
 
 interface ChatViewProps {
   chat: Chat;
@@ -33,8 +66,12 @@ function formatTime(value: string): string {
 
 function isAudioUrl(url: string): boolean {
   if (!url) return false;
-  return /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
-    url.includes("audio") || url.includes("ptt") || url.includes("voice");
+  return (
+    /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
+    url.includes("audio") ||
+    url.includes("ptt") ||
+    url.includes("voice")
+  );
 }
 
 function isImageUrl(url: string): boolean {
@@ -42,9 +79,83 @@ function isImageUrl(url: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
 }
 
-function MessageBubble({ message }: { message: Message }) {
+type RenderableAttachment = { url: string; name?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function attachmentFrom(value: unknown): RenderableAttachment | null {
+  if (typeof value === "string") return /^https?:\/\//i.test(value) ? { url: value } : null;
+  if (!isRecord(value)) return null;
+  const url =
+    value.url ||
+    value.mediaUrl ||
+    value.attachmentUrl ||
+    value.attachment_url ||
+    value.fileUrl ||
+    value.file_url ||
+    value.publicUrl ||
+    value.public_url ||
+    value.link ||
+    value.src;
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return null;
+  const name = value.name || value.fileName || value.filename || value.title;
+  return { url, name: typeof name === "string" ? name : undefined };
+}
+
+function getMessageAttachments(message: Message): RenderableAttachment[] {
+  const msg = message as Message & { files?: unknown; media?: unknown; meta?: unknown };
+  const values: unknown[] = [];
+  const add = (value: unknown) => {
+    if (Array.isArray(value)) values.push(...value);
+    else if (value) values.push(value);
+  };
+  add(message.mediaUrl);
+  add(message.attachments);
+  add(message.attachmentUrls);
+  add(msg.files);
+  add(msg.media);
+  add(msg.meta);
+  const seen = new Set<string>();
+  return values
+    .map(attachmentFrom)
+    .filter((item): item is RenderableAttachment => !!item)
+    .filter((item) => (seen.has(item.url) ? false : (seen.add(item.url), true)));
+}
+
+function isAttachmentSummary(text: string): boolean {
+  return /^\(?\s*\d+\s+anexos?\s+enviad[oa]s?\s*\)?$/i.test(text.trim());
+}
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const ql = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  const lower = text.toLowerCase();
+  while (i < text.length) {
+    const idx = lower.indexOf(ql, i);
+    if (idx === -1) {
+      parts.push(text.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark key={idx} className="rounded-sm bg-emerald-400/40 text-white px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>,
+    );
+    i = idx + query.length;
+  }
+  return parts;
+}
+
+function MessageBubble({ message, highlight }: { message: Message; highlight?: string }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
+  const attachments = getMessageAttachments(message);
+  const showText = !!message.text && !(attachments.length > 0 && isAttachmentSummary(message.text));
 
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
@@ -63,32 +174,61 @@ function MessageBubble({ message }: { message: Message }) {
             {human ? "Administrador" : "Pana Bot"}
           </div>
         )}
-        {message.text && (
-          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+        {showText && (
+          <p className="whitespace-pre-wrap break-words text-sm leading-5">
+            {highlight ? highlightText(message.text, highlight) : message.text}
+          </p>
         )}
-        {message.mediaUrl && (
-          isAudioUrl(message.mediaUrl) ? (
-            <div className="mt-2 rounded-md bg-black/20 p-2">
-              <audio controls preload="metadata" className="h-8 w-full" style={{ minWidth: "200px", maxWidth: "300px" }}>
-                <source src={message.mediaUrl} />
-                Tu navegador no soporta audio
-              </audio>
-            </div>
-          ) : isImageUrl(message.mediaUrl) ? (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
-              <img
-                src={message.mediaUrl}
-                alt="adjunto"
-                className="max-w-full rounded-md border border-white/10"
-                style={{ maxHeight: 220 }}
-                loading="lazy"
-              />
-            </a>
-          ) : (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline">
-              <Paperclip size={12} /> Abrir archivo adjunto
-            </a>
-          )
+        {attachments.length > 0 && (
+          <div className={showText ? "mt-2 space-y-2" : "space-y-2"}>
+            {attachments.map((attachment) => {
+              if (isAudioUrl(attachment.url)) {
+                return (
+                  <div key={attachment.url} className="rounded-md bg-black/20 p-2">
+                    <audio
+                      controls
+                      preload="metadata"
+                      className="h-8 w-full"
+                      style={{ minWidth: "200px", maxWidth: "300px" }}
+                    >
+                      <source src={attachment.url} />
+                      Tu navegador no soporta audio
+                    </audio>
+                  </div>
+                );
+              }
+              if (isImageUrl(attachment.url)) {
+                return (
+                  <a
+                    key={attachment.url}
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block"
+                  >
+                    <img
+                      src={attachment.url}
+                      alt={attachment.name || "adjunto"}
+                      className="max-w-full rounded-md border border-white/10"
+                      style={{ maxHeight: 220 }}
+                      loading="lazy"
+                    />
+                  </a>
+                );
+              }
+              return (
+                <a
+                  key={attachment.url}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-cyan-300 underline"
+                >
+                  <Paperclip size={12} /> {attachment.name || "Abrir archivo adjunto"}
+                </a>
+              );
+            })}
+          </div>
         )}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-50">
           {formatTime(message.createdAt)}
@@ -115,19 +255,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-register-v1`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
-        },
-        body: JSON.stringify({
-          contactId: chat.contactId,
-          name: nombre.trim(),
-        }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Error al registrar");
+      await registerContact({ contactId: chat.contactId, name: nombre.trim() });
       onSuccess(nombre.trim());
       onClose();
     } catch (reason: unknown) {
@@ -139,7 +267,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-[#181d25] p-5">
+      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-[#181d25] p-5 text-center">
         <h3 className="mb-3 text-sm font-semibold text-white">
           {chat.name && chat.name !== "Sin nombre" ? "Editar contacto" : "Registrar contacto"}
         </h3>
@@ -147,18 +275,20 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Nombre del cliente"
-          className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
+          className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white text-center outline-none placeholder:text-slate-500 focus:border-emerald-400/40"
         />
-        <p className="mb-3 text-xs text-slate-500">Tel: {chat.phone}</p>
+        <div className="mb-3 flex justify-center">
+          <PhoneCopy phone={chat.phone} />
+        </div>
         {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-center gap-2">
           <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={!nombre.trim() || saving}
-            className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400 disabled:opacity-50"
+            className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
           >
             {saving ? "Guardando..." : chat.name && chat.name !== "Sin nombre" ? "Guardar" : "Registrar"}
           </button>
@@ -179,10 +309,88 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [nombreMostrado, setNombreMostrado] = useState(chat.name);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (pendingFiles.length === 0) {
+      setPendingPreviews([]);
+      return;
+    }
+    const urls = pendingFiles.map((f) =>
+      f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : "",
+    );
+    setPendingPreviews(urls);
+    return () => urls.forEach((u) => u && URL.revokeObjectURL(u));
+  }, [pendingFiles]);
+
+  function addPendingFiles(files: File[] | FileList | null) {
+    if (!files) return;
+    const arr = Array.from(files);
+    if (arr.length) setPendingFiles((prev) => [...prev, ...arr]);
+  }
+  function removePendingFile(i: number) {
+    setPendingFiles((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  const copyPhone = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(chat.phone || "");
+      setCopiedPhone(true);
+      window.setTimeout(() => setCopiedPhone(false), 1400);
+    } catch {}
+  }, [chat.phone]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const chatIdRef = useRef(chat.contactId);
+  const initialUnreadRef = useRef(chat.unreadCount || 0);
+  const didInitialScrollRef = useRef(false);
+
+  const initialUnread = initialUnreadRef.current;
+  let firstUnreadId: string | null = null;
+  if (initialUnread > 0) {
+    const incoming = messages.filter((m) => m.role === "user");
+    const target = incoming[incoming.length - initialUnread];
+    firstUnreadId = target?.id || null;
+  }
+
+  const trimmedQuery = searchQuery.trim();
+  const matches = trimmedQuery
+    ? messages.filter((m) => m.text?.toLowerCase().includes(trimmedQuery.toLowerCase()))
+    : [];
+
+  useEffect(() => {
+    setMatchIndex(0);
+  }, [trimmedQuery, chat.contactId]);
+
+  useEffect(() => {
+    if (!showSearch || !trimmedQuery || matches.length === 0) return;
+    const safeIdx = Math.min(matchIndex, matches.length - 1);
+    const msg = matches[safeIdx];
+    const el = messageRefs.current.get(msg.id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [matchIndex, matches, showSearch, trimmedQuery]);
+
+  useEffect(() => {
+    if (showSearch) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else {
+      setSearchQuery("");
+    }
+  }, [showSearch]);
+
+  // Reset search al cambiar de chat
+  useEffect(() => {
+    setShowSearch(false);
+    setSearchQuery("");
+  }, [chat.contactId]);
 
   const isRegistered = !!(chat.name && chat.name !== "Sin nombre");
 
@@ -202,6 +410,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   useEffect(() => {
     let active = true;
     chatIdRef.current = chat.contactId;
+    initialUnreadRef.current = chat.unreadCount || 0;
+    didInitialScrollRef.current = false;
     setMessages([]);
     setText("");
     setLoading(true);
@@ -234,17 +444,43 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   }, [chat.contactId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    if (!didInitialScrollRef.current) {
+      // Siempre iniciar desde abajo, incluso si hay mensajes sin leer
+      // (el separador "no leídos" queda visible al hacer scroll hacia arriba)
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      });
+      didInitialScrollRef.current = true;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   async function handleSend() {
     const message = text.trim();
-    if (!message || sending) return;
+    if ((!message && pendingFiles.length === 0) || sending) return;
     setSending(true);
     setError("");
     try {
       const contactId = chat.contactId;
-      await sendMessage({ contactId, text: message, userName });
+      const remaining: File[] = [];
+      const hasFiles = pendingFiles.length > 0;
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const f = pendingFiles[i];
+        try {
+          await uploadFile(f, i === 0 ? message : undefined);
+        } catch (err) {
+          // Conserva los archivos que aún no se subieron para reintentar
+          remaining.push(...pendingFiles.slice(i));
+          throw err;
+        }
+      }
+      setPendingFiles(remaining);
+      if (message && !hasFiles) {
+        await sendMessage({ contactId, phone: chat.phone, name: chat.name, text: message, userName });
+      }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
       setText("");
@@ -256,46 +492,93 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
-  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  async function uploadFile(file: File, caption?: string) {
     if (!file) return;
     setUploadingImage(true);
     setError("");
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = (reader.result as string).split(",")[1];
-          const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
-            },
-            body: JSON.stringify({
-              contactId: chat.contactId,
-              fileName: file.name,
-              mimeType: file.type,
-              base64,
-              userName,
-            }),
-          });
-          if (!response.ok) throw new Error("Error al subir el archivo");
-          const updated = await fetchChat(chat.contactId);
-          setMessages(updated);
-          onStateChanged?.();
-        } catch (reason: unknown) {
-          setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
-        } finally {
-          setUploadingImage(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      const mime = file.type || "application/octet-stream";
+      const extFromMime =
+        mime.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "bin";
+      const hasExt = /\.[A-Za-z0-9]{2,5}$/.test(file.name || "");
+      const safeName = (file.name || "archivo").replace(/[^\w.-]+/g, "_");
+      const fileName = hasExt ? safeName : `${safeName || `archivo-${Date.now()}`}.${extFromMime}`;
+
+      // 1) Sube el archivo a Lovable Cloud Storage (bucket privado crm-media)
+      const objectPath = `${chat.contactId}/${Date.now()}-${crypto.randomUUID()}-${fileName}`;
+      const { error: upErr } = await supabase.storage
+        .from("crm-media")
+        .upload(objectPath, file, { contentType: mime, upsert: false });
+      if (upErr) throw new Error(`Storage upload: ${upErr.message}`);
+
+      // 2) Genera una URL firmada de larga duración (1 año) para que GHL/Twilio
+      //    no la pierdan si el envío/reintento ocurre después de expirar.
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("crm-media")
+        .createSignedUrl(objectPath, 60 * 60 * 24 * 365);
+      if (signErr || !signed?.signedUrl) throw new Error(`Signed URL: ${signErr?.message || "unknown"}`);
+      const mediaUrl = signed.signedUrl;
+
+      const mediaType = mime.startsWith("image/")
+        ? "image"
+        : mime.startsWith("video/")
+          ? "video"
+          : mime.startsWith("audio/")
+            ? "audio"
+            : "file";
+
+      // 3) Notifica a n8n desde el backend para enviar el secret correctamente
+      await sendMedia({
+        contactId: chat.contactId,
+        phone: chat.phone,
+        name: chat.name,
+        fileName,
+        mimeType: mime,
+        mediaUrl,
+        mediaType,
+        caption,
+        userName,
+      });
+      const updated = await fetchChat(chat.contactId);
+      setMessages(updated);
+      onStateChanged?.();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Error al leer el archivo");
+      const msg = reason instanceof Error ? reason.message : "No se pudo enviar el archivo";
+      setError(msg);
+      throw reason instanceof Error ? reason : new Error(msg);
+    } finally {
       setUploadingImage(false);
     }
+  }
+
+
+  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    addPendingFiles(event.target.files);
     event.target.value = "";
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addPendingFiles(files);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      e.preventDefault();
+      addPendingFiles(files);
+    }
   }
 
   async function handleState(state: "bot" | "humano" | "pausado") {
@@ -328,7 +611,19 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white">{nombreMostrado}</h2>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-            <span>{chat.phone}</span>
+            <button
+              type="button"
+              onClick={copyPhone}
+              title={copiedPhone ? "Copiado" : "Copiar número"}
+              className="group inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -mx-1.5 text-slate-400 hover:text-emerald-300 hover:bg-white/5 transition-colors"
+            >
+              <span className="tabular-nums">{chat.phone}</span>
+              {copiedPhone ? (
+                <Check size={11} className="text-emerald-400" />
+              ) : (
+                <Copy size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </button>
             <span>·</span>
             <span className={chat.status === "bot" ? "text-emerald-300" : "text-amber-200"}>
               {chat.status === "bot"
@@ -340,6 +635,17 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setShowSearch((v) => !v)}
+            title="Buscar en este chat"
+            className={`grid size-9 place-items-center rounded-md border transition-colors ${
+              showSearch
+                ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-300"
+                : "border-white/10 text-slate-400 hover:bg-white/5 hover:text-emerald-300"
+            }`}
+          >
+            <Search size={15} />
+          </button>
           <button
             onClick={() => setShowRegister(true)}
             title={isRegistered ? "Editar contacto" : "Registrar contacto"}
@@ -378,6 +684,58 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
       </header>
 
+      {showSearch && (
+        <div className="flex items-center gap-2 border-b border-white/8 bg-[#10141b] px-4 py-2">
+          <div className="relative flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Buscar en este chat…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches.length > 0) {
+                  e.preventDefault();
+                  setMatchIndex((i) => (e.shiftKey ? (i - 1 + matches.length) % matches.length : (i + 1) % matches.length));
+                } else if (e.key === "Escape") {
+                  setShowSearch(false);
+                }
+              }}
+              className="w-full rounded-full bg-[#202c33] py-1.5 pl-9 pr-3 text-[13px] text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-400/40"
+            />
+          </div>
+          {trimmedQuery && (
+            <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+              {matches.length === 0 ? "0" : `${Math.min(matchIndex + 1, matches.length)} / ${matches.length}`}
+            </span>
+          )}
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i - 1 + matches.length) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Anterior"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i + 1) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Siguiente"
+          >
+            <ChevronDown size={14} />
+          </button>
+          <button
+            onClick={() => setShowSearch(false)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-slate-100"
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {loading ? (
           <div className="grid h-full place-items-center text-slate-500">
@@ -392,13 +750,38 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-2">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {messages.map((message) => {
+              const isActiveMatch =
+                trimmedQuery && matches[matchIndex]?.id === message.id;
+              const showUnreadDivider = message.id === firstUnreadId;
+              return (
+                <div key={message.id}>
+                  {showUnreadDivider && (
+                    <div className="my-2 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                        {initialUnread} {initialUnread === 1 ? "mensaje no leído" : "mensajes no leídos"}
+                      </span>
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                    </div>
+                  )}
+                  <div
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(message.id, el);
+                      else messageRefs.current.delete(message.id);
+                    }}
+                    className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
+                  >
+                    <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                  </div>
+                </div>
+              );
+            })}
             <div ref={bottomRef} />
           </div>
         )}
       </div>
+
 
       {error && (
         <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
@@ -412,6 +795,40 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             onSelect={(t) => setText(t)}
             onClose={() => setShowQuickReplies(false)}
           />
+        )}
+        {pendingFiles.length > 0 && (
+          <div className="mx-auto mb-2 flex max-w-4xl flex-wrap gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+            {pendingFiles.map((f, i) => {
+              const preview = pendingPreviews[i];
+              return (
+                <div
+                  key={i}
+                  className="group relative flex items-center gap-2 rounded-md border border-white/10 bg-black/30 p-1.5 pr-2 max-w-[220px]"
+                >
+                  {preview && f.type.startsWith("image/") ? (
+                    <img src={preview} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                  ) : preview && f.type.startsWith("video/") ? (
+                    <video src={preview} className="h-12 w-12 shrink-0 rounded object-cover" />
+                  ) : (
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white/5 text-slate-400">
+                      <Paperclip size={16} />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] text-slate-200">{f.name || "Archivo"}</p>
+                    <p className="text-[10px] text-slate-500">{(f.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    onClick={() => removePendingFile(i)}
+                    title="Quitar"
+                    className="ml-1 grid size-5 shrink-0 place-items-center rounded text-slate-400 hover:bg-white/5 hover:text-rose-300"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
         <div className="mx-auto flex max-w-4xl items-end gap-2">
           <button
@@ -437,6 +854,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             ref={fileInputRef}
             type="file"
             accept="image/*,video/*,.pdf,.doc,.docx"
+            multiple
             className="hidden"
             onChange={handleImageUpload}
           />
@@ -450,13 +868,16 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
                 handleSend();
               }
             }}
+            onPaste={handlePaste}
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
             rows={1}
             placeholder="Escribe una respuesta..."
             className="flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none overflow-y-auto placeholder:text-slate-600 focus:border-cyan-400/35"
             style={{ minHeight: "44px", maxHeight: "160px" }}
           />
           <button
-            disabled={!text.trim() || sending}
+            disabled={(!text.trim() && pendingFiles.length === 0) || sending || uploadingImage}
             onClick={handleSend}
             title="Enviar mensaje"
             className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600"

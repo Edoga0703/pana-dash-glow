@@ -1,0 +1,1060 @@
+{
+  "name": "Mini CRM API v1 (clean)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b66bd94f-24b7-46d8-8c1f-ba56bca5815d",
+      "name": "SETUP - Ejecutar una vez",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [1616, 1712]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ALTER TABLE historial_mensajes ADD COLUMN IF NOT EXISTS app_id TEXT;\nALTER TABLE historial_mensajes ADD COLUMN IF NOT EXISTS media_url TEXT;\nALTER TABLE historial_mensajes ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT TRUE;\nALTER TABLE historial_mensajes ADD COLUMN IF NOT EXISTS sender_type TEXT NOT NULL DEFAULT 'bot';\nALTER TABLE historial_mensajes ADD COLUMN IF NOT EXISTS ghl_message_id TEXT;\n\nALTER TABLE chats_pausados ADD COLUMN IF NOT EXISTS paused_by TEXT;\nALTER TABLE chats_pausados ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pendiente';\n\nCREATE TABLE IF NOT EXISTS sync_cursors (\n  contact_id TEXT PRIMARY KEY,\n  last_history_id BIGINT NOT NULL DEFAULT 0,\n  last_ghl_message_id TEXT,\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE TABLE IF NOT EXISTS audit_logs (\n  id BIGSERIAL PRIMARY KEY,\n  contact_id TEXT NOT NULL,\n  user_name TEXT,\n  action TEXT NOT NULL,\n  details JSONB,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_historial_contact_id_id ON historial_mensajes(contact_id, id DESC);\nCREATE INDEX IF NOT EXISTS idx_historial_unread ON historial_mensajes(contact_id, is_read) WHERE is_read = FALSE;\nCREATE UNIQUE INDEX IF NOT EXISTS idx_historial_ghl_message_id ON historial_mensajes(ghl_message_id) WHERE ghl_message_id IS NOT NULL;\nCREATE INDEX IF NOT EXISTS idx_audit_contact_created ON audit_logs(contact_id, created_at DESC);\n\nSELECT 'mini_crm_v1_ready' AS resultado;",
+        "options": {}
+      },
+      "id": "cc98609b-cd88-46c3-8212-6143cf74dc58",
+      "name": "SETUP - Preparar PostgreSQL CRM",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1872, 1648],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" }
+      }
+    },
+
+    {
+      "parameters": {
+        "path": "pana-crm-search-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7aa3a3c9-c1c5-403f-b538-d6bd3e51f1d3",
+      "name": "GET CRM Search",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [4128, 2832],
+      "webhookId": "pana-crm-search-v1",
+      "credentials": {
+        "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst q = String(input.query?.q || '').trim().slice(0, 200);\nconst valid = q.length >= 2;\nreturn [{ json: { valid, q } }];"
+      },
+      "id": "977856ad-4ccd-490a-9315-7f65ddfd345a",
+      "name": "Validar Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4352, 2832]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "id": "cond-s001", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e4516bc5-64b4-4501-b4cf-5491609c4657",
+      "name": "Query Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [4576, 2832]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (ce.contact_id)\n  ce.contact_id AS \"contactId\",\n  ce.conversation_id AS \"conversationId\",\n  COALESCE(ce.nombre, 'Sin nombre') AS name,\n  COALESCE(ce.phone, '') AS phone,\n  hm.text AS \"matchedMessage\",\n  hm.created_at AS \"matchedAt\",\n  COALESCE(ce.modo_atencion, 'bot') AS status,\n  COALESCE(ce.bot_activo, TRUE) AS \"botActive\",\n  COALESCE(ce.human_override, FALSE) AS \"humanOverride\",\n  ce.last_message_ts AS \"lastMessageTs\",\n  ce.updated_at AS \"updatedAt\",\n  COALESCE(ce.unread_count, 0)::int AS \"unreadCount\"\nFROM historial_mensajes hm\nJOIN conversaciones_estado ce ON ce.contact_id = hm.contact_id\nWHERE hm.text ILIKE '%{{ $json.q }}%'\nORDER BY ce.contact_id, hm.id DESC\nLIMIT 30;",
+        "options": {}
+      },
+      "id": "3544f916-ae91-4a86-9da2-74ea33c7d9da",
+      "name": "DB - Buscar en Mensajes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4784, 2768],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $('Validar Query').first().json.q;\nconst results = $input.all().map(i => i.json).filter(i => i && i.contactId);\nreturn [{ json: { ok: true, q, total: results.length, results } }];"
+      },
+      "id": "80eeb23c-7d5b-4d7b-a525-2195e76a9d0c",
+      "name": "Agrupar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5008, 2768]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": { "responseCode": 200 } },
+      "id": "0177bf6c-ced4-4e4b-b4a8-dc4f9a9ad5a1",
+      "name": "Responder Search",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [5232, 2768]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: false, error: \"minimo 2 caracteres\" } }}", "options": { "responseCode": 400 } },
+      "id": "bf92de25-1a52-4234-8e3b-304a97d46a45",
+      "name": "Error Search",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4784, 2912]
+    },
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-contact-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "80c60f23-50bd-46c2-bd40-66c190a37e7c",
+      "name": "POST CRM Contacto",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [3136, 4256],
+      "webhookId": "pana-crm-contact-v1",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst nombre = String(body.nombre || '').trim();\nconst telefono = String(body.telefono || '').trim().replace(/\\s/g, '');\nconst contactId = String(body.contactId || '').trim();\nconst valid = nombre.length > 0 && telefono.length > 0 && contactId.length > 0;\nconst esc = v => String(v).replace(/'/g, \"''\");\nreturn [{ json: { valid, nombre, telefono, contactId, sql: { nombre: esc(nombre), telefono: esc(telefono), contactId: esc(contactId) } } }];"
+      },
+      "id": "1635b666-39ce-4d5d-b9ed-e9c8db78595a",
+      "name": "Validar Contacto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3360, 4256]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "v001", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1525ba5-44ba-4f0d-829b-87da97b4f8c8",
+      "name": "Contacto Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3584, 4256]
+    },
+    {
+      "parameters": {
+        "url": "https://people.googleapis.com/v1/contactGroups",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleContactsOAuth2Api",
+        "options": { "timeout": 15000 }
+      },
+      "id": "59c8ec56-f19d-4d0e-8c45-68ce187b277c",
+      "name": "Google - Buscar Grupo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3792, 4192],
+      "credentials": { "googleContactsOAuth2Api": { "id": "K9QQulSQ7E3awjJO", "name": "Google Contacts account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const groups = $input.first().json.contactGroups || [];\nconst existing = groups.find(g => g.name === 'CuentasTupana' || g.formattedName === 'CuentasTupana');\nconst input = $('Validar Contacto').first().json;\nreturn [{ json: { ...input, grupoExistente: existing || null, grupoResourceName: existing ? existing.resourceName : null } }];"
+      },
+      "id": "2d35cd69-c3ff-4a53-be7f-610d3ec3a3e7",
+      "name": "Verificar Grupo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4016, 4192]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "g001", "leftValue": "={{ $json.grupoResourceName }}", "rightValue": "", "operator": { "type": "string", "operation": "notEquals" } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "361e1aa5-1b98-496d-a025-bf7567ed475a",
+      "name": "Grupo Existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [4240, 4192]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://people.googleapis.com/v1/contactGroups",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleContactsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contactGroup: { name: 'CuentasTupana' } }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "0d4ee61f-85ea-4484-91eb-8edd1986702b",
+      "name": "Google - Crear Grupo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4464, 4272],
+      "credentials": { "googleContactsOAuth2Api": { "id": "K9QQulSQ7E3awjJO", "name": "Google Contacts account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Verificar Grupo').first().json;\nlet grupoResourceName = input.grupoResourceName;\nif (!grupoResourceName) {\n  grupoResourceName = $input.first().json.resourceName;\n}\nreturn [{ json: { ...input, grupoResourceName } }];"
+      },
+      "id": "51cd0e6a-d43d-40fe-8d57-78d2c40fee72",
+      "name": "Consolidar Grupo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4672, 4192]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://people.googleapis.com/v1/people:createContact",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleContactsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ names: [{ givenName: $json.nombre }], phoneNumbers: [{ value: $json.telefono, type: 'mobile' }], memberships: [{ contactGroupMembership: { contactGroupResourceName: $json.grupoResourceName } }] }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "4ee5ffd8-34ad-451a-a221-ed9f0e080ce3",
+      "name": "Google - Crear Contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4896, 4192],
+      "credentials": { "googleContactsOAuth2Api": { "id": "K9QQulSQ7E3awjJO", "name": "Google Contacts account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contactos_crm\n  (contact_id, nombre, telefono, google_resource_name, created_at, updated_at)\nVALUES\n  ('{{ $('Consolidar Grupo').first().json.sql.contactId }}', '{{ $('Consolidar Grupo').first().json.sql.nombre }}', '{{ $('Consolidar Grupo').first().json.sql.telefono }}', '{{ $json.resourceName }}', NOW(), NOW())\nON CONFLICT (contact_id) DO UPDATE SET\n  nombre = EXCLUDED.nombre,\n  telefono = EXCLUDED.telefono,\n  google_resource_name = EXCLUDED.google_resource_name,\n  updated_at = NOW()\nRETURNING *;",
+        "options": {}
+      },
+      "id": "c89b4e1c-8f32-41d3-a2ba-a9e94710f15c",
+      "name": "DB - Guardar Contacto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [5120, 4192],
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS contactos_crm (\n  contact_id TEXT PRIMARY KEY,\n  nombre TEXT NOT NULL,\n  telefono TEXT NOT NULL,\n  google_resource_name TEXT,\n  google_etag TEXT,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\nCREATE INDEX IF NOT EXISTS idx_contactos_google ON contactos_crm(google_resource_name);\nSELECT 'tabla_lista' AS resultado;",
+        "options": {}
+      },
+      "id": "0692e3ec-74aa-4334-866e-552919ce1f95",
+      "name": "DB - Crear Tabla Contactos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3792, 4336],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, contactId: $('Consolidar Grupo').first().json.contactId, googleResourceName: $('DB - Guardar Contacto').first().json.google_resource_name } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "d740acbc-634c-4c01-ba23-733624d9ec21",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [5344, 4192]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'nombre, telefono y contactId son requeridos' } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "2fa8b09e-298b-451b-a405-f984f354e937",
+      "name": "Error Contacto",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [3792, 4416]
+    },
+
+    {
+      "parameters": { "rule": { "interval": [ { "field": "minutes" } ] } },
+      "id": "869252fd-07b4-47a1-a760-4e02e38876d4",
+      "name": "Trigger - Sync Google",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [3744, 4624]
+    },
+    {
+      "parameters": {
+        "url": "https://people.googleapis.com/v1/people/me/connections",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleContactsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "personFields", "value": "names,phoneNumbers,memberships,metadata" },
+            { "name": "pageSize", "value": "1000" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "6b855e8d-a967-4de2-8a6a-302a58c9383d",
+      "name": "Google - Leer Contactos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3968, 4624],
+      "credentials": { "googleContactsOAuth2Api": { "id": "K9QQulSQ7E3awjJO", "name": "Google Contacts account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst connections = raw.connections || [];\nconst contactos = connections\n  .filter(c => (c.memberships || []).some(m => (m.contactGroupMembership?.contactGroupResourceName || '').includes('contactGroups')))\n  .map(c => ({\n    nombre: c.names?.[0]?.displayName || c.names?.[0]?.givenName || '',\n    telefono: c.phoneNumbers?.[0]?.value || '',\n    resourceName: c.resourceName || '',\n    etag: c.etag || ''\n  }))\n  .filter(c => c.resourceName && (c.nombre || c.telefono));\nconsole.log('SYNC GOOGLE: contactos=' + contactos.length);\nreturn contactos.map(c => ({ json: c }));"
+      },
+      "id": "ec18b845-c2d7-4869-b2c3-8e561a7fece4",
+      "name": "Filtrar Contactos CuentasTupana",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4192, 4624]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contactos_crm\n  (contact_id, nombre, telefono, google_resource_name, google_etag, updated_at)\nVALUES (\n  '{{ $json.resourceName }}',\n  '{{ String($json.nombre || \"\").replace(/'/g, \"''\") }}',\n  '{{ String($json.telefono || \"\").replace(/'/g, \"''\") }}',\n  '{{ $json.resourceName }}',\n  '{{ String($json.etag || \"\").replace(/'/g, \"''\") }}',\n  NOW()\n)\nON CONFLICT (google_resource_name) DO UPDATE SET\n  nombre = EXCLUDED.nombre,\n  telefono = EXCLUDED.telefono,\n  google_etag = EXCLUDED.google_etag,\n  updated_at = NOW()\nWHERE contactos_crm.google_etag IS DISTINCT FROM EXCLUDED.google_etag\nRETURNING contact_id, nombre, telefono;",
+        "options": {}
+      },
+      "id": "c95a77ad-9649-4bf6-96c7-c7bf31841184",
+      "name": "DB - Sincronizar Contacto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4416, 4624],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const updated = $input.all().filter(i => i.json && i.json.contact_id);\nconsole.log('SYNC GOOGLE -> DB: actualizados=' + updated.length);\nreturn [{ json: { ok: true, actualizados: updated.length } }];"
+      },
+      "id": "7d9a4a70-c3d7-4bc9-9b7a-a473a139fe82",
+      "name": "LOG - Sync Completado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4624, 4624]
+    },
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-contact-update-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7e54faf1-b5ca-4ee5-b229-33a3ca099628",
+      "name": "POST CRM Actualizar Contacto",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [3312, 5024],
+      "webhookId": "pana-crm-contact-update-v1",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst contactId = String(body.contactId || '').trim();\nconst nombre = String(body.nombre || '').trim();\nconst telefono = String(body.telefono || '').trim();\nconst valid = contactId.length > 0 && (nombre.length > 0 || telefono.length > 0);\nconst esc = v => String(v).replace(/'/g, \"''\");\nreturn [{ json: { valid, contactId, nombre, telefono, sql: { contactId: esc(contactId), nombre: esc(nombre), telefono: esc(telefono) } } }];"
+      },
+      "id": "cd173667-50c5-4380-bf67-1131f43b5b93",
+      "name": "Validar Actualizacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3536, 5024]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "v001", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "967db08c-5cb6-453b-bc62-0cf161a7db0c",
+      "name": "Actualizacion Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3744, 5024]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT contact_id, nombre, telefono, google_resource_name, google_etag\nFROM contactos_crm\nWHERE contact_id = '{{ $json.sql.contactId }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "d8a1ef78-cbbf-4471-b9ba-f3bc1f31d518",
+      "name": "DB - Buscar Contacto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3968, 4960],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Validar Actualizacion').first().json;\nconst db = $input.first().json;\nconst googleResourceName = db.google_resource_name || null;\nconst etag = db.google_etag || '*';\nconst nombreFinal = input.nombre || db.nombre || '';\nconst telefonoFinal = input.telefono || db.telefono || '';\nreturn [{ json: { ...input, googleResourceName, etag, nombreFinal, telefonoFinal, existe: !!googleResourceName } }];"
+      },
+      "id": "9b4ad06e-08ca-4e28-a29f-ee89bb8ada2f",
+      "name": "Preparar Actualizacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4192, 4960]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "e001", "leftValue": "={{ $json.existe }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d8b11eba-de10-4745-b58a-bdbf46eec399",
+      "name": "Tiene Google Resource?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [4416, 4960]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://people.googleapis.com/v1/{{ $json.googleResourceName }}:updateContact",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleContactsOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": { "parameters": [ { "name": "updatePersonFields", "value": "names,phoneNumbers" } ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ etag: $json.etag, names: [{ givenName: $json.nombreFinal }], phoneNumbers: [{ value: $json.telefonoFinal, type: 'mobile' }] }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "2b4a3efa-0257-4240-8dd0-d072d3885c00",
+      "name": "Google - Actualizar Contacto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4624, 4880],
+      "credentials": { "googleContactsOAuth2Api": { "id": "K9QQulSQ7E3awjJO", "name": "Google Contacts account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contactos_crm SET\n  nombre = '{{ $('Preparar Actualizacion').first().json.nombreFinal.replace(/'/g, \"''\") }}',\n  telefono = '{{ $('Preparar Actualizacion').first().json.telefonoFinal.replace(/'/g, \"''\") }}',\n  google_etag = '{{ String($json.etag || \"\").replace(/'/g, \"''\") }}',\n  updated_at = NOW()\nWHERE contact_id = '{{ $('Preparar Actualizacion').first().json.sql.contactId }}'\nRETURNING *;",
+        "options": {}
+      },
+      "id": "8be1202e-6650-4ebc-b15c-ed4b04440019",
+      "name": "DB - Actualizar Contacto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4848, 4880],
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, contactId: $json.contact_id, nombre: $json.nombre, telefono: $json.telefono } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "a7b7df2d-c082-4486-81b1-45943556bce3",
+      "name": "Responder Actualizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [5072, 4880]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'Contacto no encontrado en CRM' } }}",
+        "options": { "responseCode": 404 }
+      },
+      "id": "c5f64f0b-1162-4b16-8d65-41cd2cbd351d",
+      "name": "Error No Encontrado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4624, 5072]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'contactId y al menos nombre o telefono son requeridos' } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "77bbe1a2-d14d-4bc2-99f2-ec04bd9186c4",
+      "name": "Error Validacion",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [3968, 5104]
+    },
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-media-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "07c1ec1d-bbef-4cec-9404-5b4e33c78dfa",
+      "name": "POST CRM Media",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [3728, 496],
+      "webhookId": "pana-crm-media-v1",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst contactId = String(body.contactId || '').trim();\nconst mediaUrl  = String(body.mediaUrl  || '').trim();\nconst mediaType = String(body.mediaType || 'file').trim();\nconst fileName  = String(body.fileName  || '').trim().slice(0, 200);\nconst mimeType  = String(body.mimeType  || 'application/octet-stream').trim().slice(0, 120);\nconst userName  = String(body.userName  || 'Administrador CRM').trim().slice(0, 120);\nconst validId  = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nconst validUrl = /^https?:\\/\\/.+/i.test(mediaUrl);\nif (!validId || !validUrl) {\n  return [{ json: { ok: false, status: 400, error: 'Payload invalido (contactId/mediaUrl)' } }];\n}\nreturn [{ json: { ok: true, contactId, mediaUrl, mediaType, fileName, mimeType, userName } }];"
+      },
+      "id": "b055b919-6b96-4aed-8b18-172d042330e6",
+      "name": "Validar Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3952, 496]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "leftValue": "={{$json.ok}}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c736dd8e-1e55-4392-a767-69816a105981",
+      "name": "Media Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4176, 496]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.GHL_TOKEN}}" },
+            { "name": "Version", "value": "2021-04-15" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'WhatsApp', contactId: $json.contactId, message: '', attachments: [$json.mediaUrl] }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "665277f6-60db-4c23-830a-cd63226706cc",
+      "name": "GHL - Enviar Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4384, 416]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_mensajes\n  (contact_id, role, text, media_url, app_id, sender_type, ghl_message_id, is_read)\nVALUES (\n  '{{ $('Validar Media').first().json.contactId }}',\n  'assistant',\n  '',\n  '{{ $('Validar Media').first().json.mediaUrl }}',\n  '6a292eaaab6c8cd2b6a8232a',\n  'human',\n  NULLIF('{{ $json.messageId || $json.id || \"\" }}', ''),\n  TRUE\n)\nON CONFLICT DO NOTHING;\nSELECT '{{ $json.messageId || $json.id || \"\" }}' AS message_id;",
+        "options": {}
+      },
+      "id": "ed27e50b-7876-4483-a8e2-c3001c78bb3c",
+      "name": "DB - Registrar Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4608, 416],
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, mediaUrl: $('Validar Media').first().json.mediaUrl, messageId: $json.message_id || '' } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "ab6b0416-010a-4fe8-b4d9-2801b5a45feb",
+      "name": "Responder Media OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4832, 416]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.error || 'Payload invalido' } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "2ee29615-9709-49b6-99b4-c1991ea4d945",
+      "name": "Error Media",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4384, 624]
+    },
+
+    {
+      "parameters": {
+        "path": "pana-crm-inbox-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a3f0c51e-6c9b-45ef-a573-bf040fd4a643",
+      "name": "GET CRM Inbox",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1552, 1904],
+      "webhookId": "252c9635-89a5-4eff-8baf-f4ead0b02ade",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  ce.contact_id AS \"contactId\",\n  ce.conversation_id AS \"conversationId\",\n  COALESCE(ce.nombre, 'Sin nombre') AS name,\n  COALESCE(ce.phone, '') AS phone,\n  COALESCE(ce.last_message_body, hm.text, '') AS \"lastMessage\",\n  COALESCE(ce.unread_count, 0)::int AS \"unreadCount\",\n  COALESCE(ce.modo_atencion, 'bot') AS status,\n  COALESCE(ce.bot_activo, TRUE) AS \"botActive\",\n  COALESCE(ce.human_override, FALSE) AS \"humanOverride\",\n  ce.motivo AS reason,\n  ce.last_message_ts AS \"lastMessageTs\",\n  ce.updated_at AS \"updatedAt\"\nFROM conversaciones_estado ce\nLEFT JOIN LATERAL (\n  SELECT text FROM historial_mensajes h\n  WHERE h.contact_id = ce.contact_id\n  ORDER BY h.id DESC LIMIT 1\n) hm ON TRUE\nORDER BY ce.last_message_ts DESC NULLS LAST, ce.updated_at DESC\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "941a258d-7243-4eee-a36f-f30be27b2ada",
+      "name": "DB - CRM Inbox",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1792, 1904],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chats = $input.all().map(item => item.json).filter(item => item && item.contactId);\nreturn [{ json: { ok: true, chats } }];"
+      },
+      "id": "5c869f97-3d57-424e-9377-093863d12196",
+      "name": "Agrupar CRM Inbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2064, 1904]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": { "responseCode": 200 } },
+      "id": "7c8f0ab1-280f-4da2-9978-c8af984a3eac",
+      "name": "Responder CRM Inbox",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2304, 1904]
+    },
+
+    {
+      "parameters": {
+        "path": "pana-crm-chat-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e0c6afda-2302-48c9-b2c9-c6124b41da9e",
+      "name": "GET CRM Chat",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1616, 2256],
+      "webhookId": "a5fe16ce-8645-492f-ab45-f1e4a3b9340b",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst contactId = String(input.query?.contactId || '').trim();\nconst page = Math.min(Math.max(Number(input.query?.page || 1), 1), 100000);\nconst limit = 50;\nconst valid = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nreturn [{ json: { valid, contactId, page, limit, offset: (page - 1) * limit } }];"
+      },
+      "id": "474676b3-08f6-4fc2-86ea-0307b0d021bf",
+      "name": "Preparar Consulta Chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 2256]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "2378462f-7a01-440a-90a4-ec3b5cf58771", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "56b998aa-7ac3-41a8-b3fa-292dba9cd027",
+      "name": "Chat Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2048, 2256]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT conversation_id AS \"conversationId\"\nFROM conversaciones_estado\nWHERE contact_id = '{{ $json.contactId }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "e09e0274-41bc-4e0e-b7b2-23e364965fa4",
+      "name": "DB - Resolver Conversacion CRM",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2272, 2208],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/conversations/{{ $json.conversationId }}/messages",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "limit", "value": "50" },
+            { "name": "sort", "value": "desc" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer pit-fd0c2e1b-c25e-4175-82a3-ab257f4ddd37" },
+            { "name": "Version", "value": "2021-07-28" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "c9981dfa-a326-467b-9e5b-b8173d948265",
+      "name": "GHL - Leer Historial CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2496, 2208]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Preparar Consulta Chat').first().json;\nconst raw = $input.first().json || {};\nconst source = raw.messages?.messages || raw.messages || raw.data || [];\nconst messages = source.map((message) => {\n  const direction = String(message.direction || message.messageDirection || '').toLowerCase();\n  const appId = String(message.appId || message.app_id || '');\n  const attachment = message.attachments?.[0] || message.mediaUrl || message.fileUrl || null;\n  return {\n    id: String(message.id || message.messageId || (message.dateAdded + '-' + direction)),\n    role: direction === 'inbound' ? 'user' : 'assistant',\n    senderType: direction === 'inbound' ? 'client' : (appId === '6a150c338ae75824fa553336' ? 'bot' : 'human'),\n    text: String(message.body || message.message || message.text || message.content || '').trim(),\n    mediaUrl: attachment,\n    createdAt: message.dateAdded || message.createdAt || new Date().toISOString(),\n    appId,\n    ghlMessageId: String(message.id || message.messageId || ''),\n    isRead: true,\n  };\n}).filter((m) => m.text || m.mediaUrl).reverse();\nreturn [{ json: { ok: true, contactId: request.contactId, page: request.page, messages } }];"
+      },
+      "id": "54abed1b-bb9e-42a5-9e7c-b4f9d30f423f",
+      "name": "Agrupar Historial CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2720, 2208]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": { "responseCode": 200 } },
+      "id": "6c4ac562-dbc0-4b7d-b7ee-96dee131f3ae",
+      "name": "Responder CRM Chat",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2912, 2208]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: false, error: \"contactId invalido\" } }}", "options": { "responseCode": 400 } },
+      "id": "292b8e25-2cd8-4312-96a3-04326d5b6619",
+      "name": "Error CRM Chat",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2272, 2320]
+    },
+
+    {
+      "parameters": {
+        "path": "pana-crm-sync-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7a2f48c5-28d4-48c5-9e12-2a5915de7d28",
+      "name": "GET CRM Sync",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1584, 2512],
+      "webhookId": "23262c41-49eb-4d33-b338-c96f2dbccc0c",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst contactId = String(input.query?.contactId || '').trim();\nconst cursor = Math.max(Number(input.query?.cursor || 0), 0);\nconst valid = /^[A-Za-z0-9_-]{1,128}$/.test(contactId) && Number.isSafeInteger(cursor);\nreturn [{ json: { valid, contactId, cursor } }];"
+      },
+      "id": "59b7edbc-b5dd-474c-869c-48c9747e8fd6",
+      "name": "Preparar Sync CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1808, 2512]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "ba74a55c-9c70-4275-86e4-b899f014fb50", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca4581eb-4a25-44e8-b21c-1c8daa9a7002",
+      "name": "Sync Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2016, 2512]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id::text,\n  role,\n  text,\n  media_url AS \"mediaUrl\",\n  created_at AS \"createdAt\",\n  app_id AS \"appId\",\n  sender_type AS \"senderType\",\n  ghl_message_id AS \"ghlMessageId\",\n  is_read AS \"isRead\"\nFROM historial_mensajes\nWHERE contact_id = '{{ $json.contactId }}' AND id > {{ $json.cursor }}\nORDER BY id ASC LIMIT 100;",
+        "options": {}
+      },
+      "id": "8a2e6cf6-48be-494d-b883-48814834aa8a",
+      "name": "DB - CRM Sync",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2240, 2464],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Preparar Sync CRM').first().json;\nconst messages = $input.all().map(item => item.json).filter(item => item && item.id);\nconst nextCursor = messages.length ? messages[messages.length - 1].id : String(request.cursor);\nreturn [{ json: { ok: true, contactId: request.contactId, cursor: nextCursor, messages } }];"
+      },
+      "id": "5d39e1bc-545e-4e37-9bad-caf2b3b8238c",
+      "name": "Agrupar Sync CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 2464]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": { "responseCode": 200 } },
+      "id": "8147eede-0e40-4b42-bfd6-13db57602e58",
+      "name": "Responder CRM Sync",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2704, 2464]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { ok: false, error: \"parametros de sincronizacion invalidos\" } }}", "options": { "responseCode": 400 } },
+      "id": "6a64a06d-29bd-473c-9bdb-bdc761029703",
+      "name": "Error CRM Sync",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2240, 2576]
+    },
+
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-send-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "94c2e0f4-05d0-42b5-8393-9640512b4fcb",
+      "name": "POST CRM Send",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1616, 2800],
+      "webhookId": "4a172578-13bb-4a99-8d26-ad307f57c662",
+      "credentials": { "httpHeaderAuth": { "id": "iOpDyoCiU4IAUuCr", "name": "Pana CRM Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || {};\nconst contactId = String(body.contactId || '').trim();\nconst text = String(body.text || '').trim().slice(0, 4000);\nconst userName = String(body.userName || 'Administrador CRM').trim().slice(0, 120);\nconst valid = /^[A-Za-z0-9_-]{1,128}$/.test(contactId) && text.length > 0;\nconst esc = (v) => String(v).replace(/'/g, \"''\");\nreturn [{ json: { valid, contactId, text, userName, sql: { contactId: esc(contactId), text: esc(text), userName: esc(userName) } } }];"
+      },
+      "id": "eb5b788a-e693-4755-891a-8b272a0dd6b8",
+      "name": "Preparar Envio CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 2800]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "id": "f54a2296-342e-4a55-8a27-5372c4776e34", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "11d66691-f5aa-4083-a969-35b92249ba5c",
+      "name": "Envio CRM Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2048, 2800]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversaciones_estado\n  (contact_id, bot_activo, modo_atencion, human_override, motivo, updated_at)\nVALUES ('{{ $json.sql.contactId }}', FALSE, 'humano', TRUE, 'CRM_HUMANO', NOW())\nON CONFLICT (contact_id) DO UPDATE SET\n  bot_activo = FALSE,\n  modo_atencion = 'humano',\n  human_override = TRUE,\n  motivo = 'CRM_HUMANO',\n  updated_at = NOW();\n\nINSERT INTO chats_pausados (contact_id, reason, paused_at, paused_by, status)\nVALUES ('{{ $json.sql.contactId }}', 'INTERVENCION_HUMANA_CRM', NOW(), '{{ $json.sql.userName }}', 'atendiendo')\nON CONFLICT (contact_id) DO UPDATE SET\n  reason = EXCLUDED.reason,\n  paused_at = NOW(),\n  paused_by = EXCLUDED.paused_by,\n  status = EXCLUDED.status;\n\nDELETE FROM buffer_mensajes WHERE contact_id = '{{ $json.sql.contactId }}';\n\nSELECT TRUE AS chat_tomado;",
+        "options": {}
+      },
+      "id": "a98987e0-735f-4d2b-995a-3e43450c7005",
+      "name": "DB - Tomar Chat Antes de Enviar",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2272, 2736],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer pit-fd0c2e1b-c25e-4175-82a3-ab257f4ddd37" },
+            { "name": "Version", "value": "2021-07-28" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'WhatsApp', contactId: $('Preparar Envio CRM').first().json.contactId, message: $('Preparar Envio CRM').first().json.text }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "6f539fa9-92e1-41f8-aab2-222a8f7dcd64",
+      "name": "GHL - Enviar desde CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2528, 2736]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_mensajes\n  (contact_id, role, text, app_id, sender_type, ghl_message_id, is_read)\nVALUES (\n  '{{ $('Preparar Envio CRM').first().json.sql.contactId }}',\n  'assistant',\n  '{{ $('Preparar Envio CRM').first().json.sql.text }}',\n  '6a292eaaab6c8cd2b6a8232a',\n  'human',\n  NULLIF('{{ $json.messageId || \"\" }}', ''),\n  TRUE\n)\nON CONFLICT DO NOTHING;\n\nINSERT INTO audit_logs (contact_id, user_name, action, details)\nVALUES (\n  '{{ $('Preparar Envio CRM').first().json.sql.contactId }}',\n  '{{ $('Preparar Envio CRM').first().json.sql.userName }}',\n  'SEND_MESSAGE',\n  jsonb_build_object('messageId', '{{ $json.messageId || \"\" }}', 'appId', '6a292eaaab6c8cd2b6a8232a')\n);\n\nSELECT '{{ $json.messageId || \"\" }}' AS message_id;",
+        "options": {}
+      },
+      "id": "3e813dc8-543d-4a40-ac56-380242fc1f0d",
+      "name": "DB - Registrar Envio CRM",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2768, 2736],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "jugYWhG4yG8FCO0l", "name": "PostgreSQL VPS Bot" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, messageId: $json.message_id, mode: \"humano\" } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "6c31ed74-25ec-4942-b194-1c7ed2edce0b",
+      "name": "Responder Envio CRM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [3024, 2736]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: \"contactId o texto invalido\" } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "b8912571-6a43-4cfb-ba4c-03e78c8ea975",
+      "name": "Error Envio CRM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2272, 2864]
+    }
+  ],
+
+  "connections": {
+    "SETUP - Ejecutar una vez": { "main": [[{ "node": "SETUP - Preparar PostgreSQL CRM", "type": "main", "index": 0 }]] },
+
+    "GET CRM Search": { "main": [[{ "node": "Validar Query", "type": "main", "index": 0 }]] },
+    "Validar Query": { "main": [[{ "node": "Query Valida?", "type": "main", "index": 0 }]] },
+    "Query Valida?": { "main": [
+      [{ "node": "DB - Buscar en Mensajes", "type": "main", "index": 0 }],
+      [{ "node": "Error Search", "type": "main", "index": 0 }]
+    ]},
+    "DB - Buscar en Mensajes": { "main": [[{ "node": "Agrupar Resultados", "type": "main", "index": 0 }]] },
+    "Agrupar Resultados": { "main": [[{ "node": "Responder Search", "type": "main", "index": 0 }]] },
+
+    "POST CRM Contacto": { "main": [[{ "node": "Validar Contacto", "type": "main", "index": 0 }]] },
+    "Validar Contacto": { "main": [[{ "node": "Contacto Valido?", "type": "main", "index": 0 }]] },
+    "Contacto Valido?": { "main": [
+      [{ "node": "DB - Crear Tabla Contactos", "type": "main", "index": 0 }],
+      [{ "node": "Error Contacto", "type": "main", "index": 0 }]
+    ]},
+    "DB - Crear Tabla Contactos": { "main": [[{ "node": "Google - Buscar Grupo", "type": "main", "index": 0 }]] },
+    "Google - Buscar Grupo": { "main": [[{ "node": "Verificar Grupo", "type": "main", "index": 0 }]] },
+    "Verificar Grupo": { "main": [[{ "node": "Grupo Existe?", "type": "main", "index": 0 }]] },
+    "Grupo Existe?": { "main": [
+      [{ "node": "Consolidar Grupo", "type": "main", "index": 0 }],
+      [{ "node": "Google - Crear Grupo", "type": "main", "index": 0 }]
+    ]},
+    "Google - Crear Grupo": { "main": [[{ "node": "Consolidar Grupo", "type": "main", "index": 0 }]] },
+    "Consolidar Grupo": { "main": [[{ "node": "Google - Crear Contacto", "type": "main", "index": 0 }]] },
+    "Google - Crear Contacto": { "main": [[{ "node": "DB - Guardar Contacto", "type": "main", "index": 0 }]] },
+    "DB - Guardar Contacto": { "main": [[{ "node": "Responder OK", "type": "main", "index": 0 }]] },
+
+    "Trigger - Sync Google": { "main": [[{ "node": "Google - Leer Contactos", "type": "main", "index": 0 }]] },
+    "Google - Leer Contactos": { "main": [[{ "node": "Filtrar Contactos CuentasTupana", "type": "main", "index": 0 }]] },
+    "Filtrar Contactos CuentasTupana": { "main": [[{ "node": "DB - Sincronizar Contacto", "type": "main", "index": 0 }]] },
+    "DB - Sincronizar Contacto": { "main": [[{ "node": "LOG - Sync Completado", "type": "main", "index": 0 }]] },
+
+    "POST CRM Actualizar Contacto": { "main": [[{ "node": "Validar Actualizacion", "type": "main", "index": 0 }]] },
+    "Validar Actualizacion": { "main": [[{ "node": "Actualizacion Valida?", "type": "main", "index": 0 }]] },
+    "Actualizacion Valida?": { "main": [
+      [{ "node": "DB - Buscar Contacto", "type": "main", "index": 0 }],
+      [{ "node": "Error Validacion", "type": "main", "index": 0 }]
+    ]},
+    "DB - Buscar Contacto": { "main": [[{ "node": "Preparar Actualizacion", "type": "main", "index": 0 }]] },
+    "Preparar Actualizacion": { "main": [[{ "node": "Tiene Google Resource?", "type": "main", "index": 0 }]] },
+    "Tiene Google Resource?": { "main": [
+      [{ "node": "Google - Actualizar Contacto", "type": "main", "index": 0 }],
+      [{ "node": "Error No Encontrado", "type": "main", "index": 0 }]
+    ]},
+    "Google - Actualizar Contacto": { "main": [[{ "node": "DB - Actualizar Contacto", "type": "main", "index": 0 }]] },
+    "DB - Actualizar Contacto": { "main": [[{ "node": "Responder Actualizado", "type": "main", "index": 0 }]] },
+
+    "POST CRM Media": { "main": [[{ "node": "Validar Media", "type": "main", "index": 0 }]] },
+    "Validar Media": { "main": [[{ "node": "Media Valida?", "type": "main", "index": 0 }]] },
+    "Media Valida?": { "main": [
+      [{ "node": "GHL - Enviar Media", "type": "main", "index": 0 }],
+      [{ "node": "Error Media", "type": "main", "index": 0 }]
+    ]},
+    "GHL - Enviar Media": { "main": [[{ "node": "DB - Registrar Media", "type": "main", "index": 0 }]] },
+    "DB - Registrar Media": { "main": [[{ "node": "Responder Media OK", "type": "main", "index": 0 }]] },
+
+    "GET CRM Inbox": { "main": [[{ "node": "DB - CRM Inbox", "type": "main", "index": 0 }]] },
+    "DB - CRM Inbox": { "main": [[{ "node": "Agrupar CRM Inbox", "type": "main", "index": 0 }]] },
+    "Agrupar CRM Inbox": { "main": [[{ "node": "Responder CRM Inbox", "type": "main", "index": 0 }]] },
+
+    "GET CRM Chat": { "main": [[{ "node": "Preparar Consulta Chat", "type": "main", "index": 0 }]] },
+    "Preparar Consulta Chat": { "main": [[{ "node": "Chat Valido?", "type": "main", "index": 0 }]] },
+    "Chat Valido?": { "main": [
+      [{ "node": "DB - Resolver Conversacion CRM", "type": "main", "index": 0 }],
+      [{ "node": "Error CRM Chat", "type": "main", "index": 0 }]
+    ]},
+    "DB - Resolver Conversacion CRM": { "main": [[{ "node": "GHL - Leer Historial CRM", "type": "main", "index": 0 }]] },
+    "GHL - Leer Historial CRM": { "main": [[{ "node": "Agrupar Historial CRM", "type": "main", "index": 0 }]] },
+    "Agrupar Historial CRM": { "main": [[{ "node": "Responder CRM Chat", "type": "main", "index": 0 }]] },
+
+    "GET CRM Sync": { "main": [[{ "node": "Preparar Sync CRM", "type": "main", "index": 0 }]] },
+    "Preparar Sync CRM": { "main": [[{ "node": "Sync Valido?", "type": "main", "index": 0 }]] },
+    "Sync Valido?": { "main": [
+      [{ "node": "DB - CRM Sync", "type": "main", "index": 0 }],
+      [{ "node": "Error CRM Sync", "type": "main", "index": 0 }]
+    ]},
+    "DB - CRM Sync": { "main": [[{ "node": "Agrupar Sync CRM", "type": "main", "index": 0 }]] },
+    "Agrupar Sync CRM": { "main": [[{ "node": "Responder CRM Sync", "type": "main", "index": 0 }]] },
+
+    "POST CRM Send": { "main": [[{ "node": "Preparar Envio CRM", "type": "main", "index": 0 }]] },
+    "Preparar Envio CRM": { "main": [[{ "node": "Envio CRM Valido?", "type": "main", "index": 0 }]] },
+    "Envio CRM Valido?": { "main": [
+      [{ "node": "DB - Tomar Chat Antes de Enviar", "type": "main", "index": 0 }],
+      [{ "node": "Error Envio CRM", "type": "main", "index": 0 }]
+    ]},
+    "DB - Tomar Chat Antes de Enviar": { "main": [[{ "node": "GHL - Enviar desde CRM", "type": "main", "index": 0 }]] },
+    "GHL - Enviar desde CRM": { "main": [[{ "node": "DB - Registrar Envio CRM", "type": "main", "index": 0 }]] },
+    "DB - Registrar Envio CRM": { "main": [[{ "node": "Responder Envio CRM", "type": "main", "index": 0 }]] }
+  },
+
+  "pinData": {},
+  "meta": { "instanceId": "pana-mini-crm-v1-clean" },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": ""
+}

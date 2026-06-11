@@ -26,6 +26,8 @@ export interface Message {
   role: 'user' | 'model' | 'assistant';
   text: string;
   mediaUrl?: string;
+  attachments?: unknown;
+  attachmentUrls?: unknown;
   createdAt: string;
   appId?: string;
   senderType?: 'bot' | 'human' | 'client';
@@ -39,8 +41,22 @@ export interface InboxResponse {
 }
 
 export interface SendMessagePayload {
-  contactId: string;
+  contactId?: string;
+  phone?: string;
+  name?: string;
   text: string;
+  userName: string;
+}
+
+export interface SendMediaPayload {
+  contactId?: string;
+  phone?: string;
+  name?: string;
+  fileName: string;
+  mimeType: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video' | 'audio' | 'file';
+  caption?: string;
   userName: string;
 }
 
