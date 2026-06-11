@@ -23,7 +23,7 @@ function config() {
   return { baseUrl: baseUrl.replace(/\/$/, ""), secret };
 }
 
-async function crmRequest(path: string, init: RequestInit = {}) {
+async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown> {
   const { baseUrl, secret } = config();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -34,13 +34,19 @@ async function crmRequest(path: string, init: RequestInit = {}) {
     },
   });
   const text = await response.text();
-  let body: Record<string, unknown> = {};
+  let body: unknown;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
     body = { error: text || `CRM error ${response.status}` };
   }
-  if (!response.ok) throw new Error(String(body?.error || `CRM error ${response.status}`));
+  if (!response.ok) {
+    const err =
+      typeof body === "object" && body != null && "error" in body
+        ? String(body.error)
+        : `CRM error ${response.status}`;
+    throw new Error(err);
+  }
   return body;
 }
 
