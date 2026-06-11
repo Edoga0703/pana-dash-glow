@@ -1,0 +1,125 @@
+{
+  "name": "Pana CRM - Media v5 (Evolution API externo)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-media-v5-evolution",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "POST CRM Media Externo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [200, 300],
+      "webhookId": "pana-crm-media-v5-evolution",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iOpDyoCiU4IAUuCr",
+          "name": "CRM Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valida payload del CRM y prepara el cuerpo para Evolution API\nconst body = $input.first().json.body || {};\n\nconst contactId = String(body.contactId || '').trim();\nconst rawPhone = String(body.phone || '').trim();\nconst phone = rawPhone.replace(/\\D/g, '');\nconst mediaUrl = String(body.mediaUrl || '').trim();\nconst mediaType = String(body.mediaType || 'file').trim().toLowerCase();\nconst fileName = String(body.fileName || 'archivo').trim().replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 200);\nconst mimeType = String(body.mimeType || 'application/octet-stream').trim().slice(0, 120);\nconst caption = String(body.caption || '').trim().slice(0, 1024);\nconst userName = String(body.userName || 'Administrador CRM').trim().slice(0, 120);\n\nconst validId = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nconst validPhone = /^\\d{8,20}$/.test(phone);\nconst validUrl = /^https?:\\/\\/.+/i.test(mediaUrl);\nconst allowedTypes = ['image', 'video', 'audio', 'file'];\n\nif (!validId || !validPhone || !validUrl || !allowedTypes.includes(mediaType)) {\n  return [{ json: { ok: false, status: 400, error: 'Payload inválido', detalle: { validId, validPhone, validUrl, mediaType } } }];\n}\n\nconst evolutionMediaType = mediaType === 'file' ? 'document' : mediaType;\n\nreturn [{ json: {\n  ok: true,\n  contactId,\n  phone,\n  mediaUrl,\n  mediaType,\n  evolutionMediaType,\n  fileName,\n  mimeType,\n  caption,\n  userName\n} }];"
+      },
+      "id": "val-1",
+      "name": "Validar Media Externa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [430, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Media Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.EVOLUTION_API_URL || 'http://localhost:8080').replace(/\\/$/, '') + '/message/sendMedia/' + $env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.EVOLUTION_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.phone, mediatype: $json.evolutionMediaType, mimetype: $json.mimeType, caption: $json.caption || '', media: $json.mediaUrl, fileName: $json.fileName }) }}",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "evo-1",
+      "name": "Evolution API - Send Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, channel: 'evolution', contactId: $('Validar Media Externa').first().json.contactId, phone: $('Validar Media Externa').first().json.phone, mediaUrl: $('Validar Media Externa').first().json.mediaUrl, messageId: $json.key?.id || $json.messageId || $json.id || '' }) }}"
+      },
+      "id": "ok-1",
+      "name": "Responder Media OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1150, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": "={{$json.status || 400}}",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error || 'Error enviando media externa', detalle: $json.detalle || null }) }}"
+      },
+      "id": "err-1",
+      "name": "Error Media",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [910, 420]
+    }
+  ],
+  "connections": {
+    "POST CRM Media Externo": {
+      "main": [[{ "node": "Validar Media Externa", "type": "main", "index": 0 }]]
+    },
+    "Validar Media Externa": {
+      "main": [[{ "node": "Media Valida?", "type": "main", "index": 0 }]]
+    },
+    "Media Valida?": {
+      "main": [
+        [{ "node": "Evolution API - Send Media", "type": "main", "index": 0 }],
+        [{ "node": "Error Media", "type": "main", "index": 0 }]
+      ]
+    },
+    "Evolution API - Send Media": {
+      "main": [[{ "node": "Responder Media OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "pana-crm-media-v5-evolution" },
+  "active": false,
+  "tags": []
+}
