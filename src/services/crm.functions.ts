@@ -139,11 +139,17 @@ function collectHttpUrls(value: unknown, urls: string[] = []): string[] {
   return [...new Set(urls)];
 }
 
-async function uploadAttachmentUrlsToGhl(contactId: string, urls: string[]): Promise<string[]> {
+async function uploadAttachmentUrlsToGhl(
+  conversationId: string,
+  urls: string[],
+): Promise<string[]> {
   const { locationId } = ghlConfig();
   const form = new FormData();
   form.append("locationId", locationId);
-  form.append("contactId", contactId);
+  // IMPORTANT: usar conversationId (no contactId) para que GHL genere URLs
+  // scoped a la conversación (.../conversations/{convId}/file.png) que Twilio
+  // sí puede descargar. Las URLs scoped a "contact" no funcionan en WhatsApp.
+  form.append("conversationId", conversationId);
   urls.forEach((url) => form.append("attachmentUrls[]", url));
 
   const res = await fetch(`${GHL_BASE}/conversations/messages/upload`, {
@@ -154,6 +160,18 @@ async function uploadAttachmentUrlsToGhl(contactId: string, urls: string[]): Pro
   const body = await parseGhlResponse(res);
   const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
   return uploaded.length ? uploaded : urls;
+}
+
+async function resolveConversationId(contactId: string): Promise<string | null> {
+  const { locationId } = ghlConfig();
+  const res = await ghlFetch(
+    `/conversations/search?locationId=${encodeURIComponent(locationId)}&contactId=${encodeURIComponent(contactId)}`,
+    {},
+    GHL_CONVERSATIONS_VERSION,
+  ).catch(() => null);
+  const body = asRecord(res);
+  const list = Array.isArray(body.conversations) ? body.conversations : [];
+  return firstString(asRecord(list[0]).id);
 }
 
 async function resolveContactId(opts: {
@@ -230,13 +248,23 @@ export const postMedia = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    // Enviamos la URL original directamente. El endpoint /messages/upload
-    // genera URLs scoped a "contact" que Twilio no puede descargar.
+    // Subir el archivo al CDN de GHL usando conversationId para obtener una
+    // URL .../conversations/{convId}/... que Twilio sí puede descargar.
+    // Si no hay conversación previa, GHL la crea al enviar el primer mensaje;
+    // en ese caso enviamos la URL original como fallback.
+    const conversationId = await resolveConversationId(contactId);
+    let attachmentUrl = data.mediaUrl;
+    if (conversationId) {
+      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [data.mediaUrl]).catch(
+        () => [data.mediaUrl],
+      );
+      attachmentUrl = uploaded[0] || data.mediaUrl;
+    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
       message: data.caption && data.caption.length > 0 ? data.caption : " ",
-      attachments: [data.mediaUrl],
+      attachments: [attachmentUrl],
     };
     if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
