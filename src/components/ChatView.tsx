@@ -46,7 +46,30 @@ function isImageUrl(url: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const ql = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  const lower = text.toLowerCase();
+  while (i < text.length) {
+    const idx = lower.indexOf(ql, i);
+    if (idx === -1) {
+      parts.push(text.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark key={idx} className="rounded-sm bg-emerald-400/40 text-white px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>,
+    );
+    i = idx + query.length;
+  }
+  return parts;
+}
+
+function MessageBubble({ message, highlight }: { message: Message; highlight?: string }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
 
