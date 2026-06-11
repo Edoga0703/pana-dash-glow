@@ -44,7 +44,7 @@ export const getInbox = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const getChat = createServerFn({ method: "GET" })
-  .validator(chatInput)
+  .inputValidator(chatInput)
   .handler(({ data }) =>
     crmRequest(
       `/webhook/pana-crm-chat-v1?contactId=${encodeURIComponent(data.contactId)}&page=${data.page}`,
