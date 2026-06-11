@@ -26,6 +26,8 @@ export interface Message {
   role: 'user' | 'model' | 'assistant';
   text: string;
   mediaUrl?: string;
+  attachments?: unknown;
+  attachmentUrls?: unknown;
   createdAt: string;
   appId?: string;
   senderType?: 'bot' | 'human' | 'client';

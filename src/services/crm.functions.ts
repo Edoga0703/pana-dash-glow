@@ -39,7 +39,7 @@ function n8nConfig() {
   return { baseUrl: baseUrl.replace(/\/$/, ""), secret };
 }
 
-async function crmRequest(path: string, init: RequestInit = {}): Promise<any> {
+async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown> {
   const { baseUrl, secret } = n8nConfig();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -50,16 +50,17 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<any> {
     },
   });
   const text = await response.text();
-  let body: any;
+  let body: unknown;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
     body = { error: text || `CRM error ${response.status}` };
   }
   if (!response.ok) {
+    const details = asRecord(body);
     const err =
-      typeof body === "object" && body != null && "error" in body
-        ? String(body.error)
+      typeof details.error === "string"
+        ? details.error
         : `CRM error ${response.status}`;
     throw new Error(err);
   }
@@ -69,6 +70,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<any> {
 // ───────────── GHL helpers ─────────────
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-04-15";
+const GHL_CONVERSATIONS_VERSION = "2023-02-21";
 
 function ghlConfig() {
   const apiKey = process.env.GHL_API_KEY;
@@ -77,32 +79,87 @@ function ghlConfig() {
   return { apiKey, locationId };
 }
 
-function ghlHeaders() {
+function ghlHeaders(version = GHL_VERSION, json = true) {
   const { apiKey } = ghlConfig();
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
-    Version: GHL_VERSION,
-    "Content-Type": "application/json",
+    Version: version,
     Accept: "application/json",
   };
+  if (json) headers["Content-Type"] = "application/json";
+  return headers;
 }
 
-async function ghlFetch(path: string, init: RequestInit = {}): Promise<any> {
-  const res = await fetch(`${GHL_BASE}${path}`, {
-    ...init,
-    headers: { ...ghlHeaders(), ...(init.headers || {}) },
-  });
+async function parseGhlResponse(res: Response): Promise<unknown> {
   const text = await res.text();
-  let body: any = {};
-  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+  let body: unknown = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text };
+  }
   if (!res.ok) {
-    const msg = body?.message || body?.error || body?.raw || `GHL ${res.status}`;
+    const details = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const msg = details.message || details.error || details.raw || `GHL ${res.status}`;
     throw new Error(`GHL ${res.status}: ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
   }
   return body;
 }
 
-async function resolveContactId(opts: { contactId?: string; phone?: string; name?: string }): Promise<string> {
+async function ghlFetch(
+  path: string,
+  init: RequestInit = {},
+  version = GHL_VERSION,
+): Promise<unknown> {
+  const res = await fetch(`${GHL_BASE}${path}`, {
+    ...init,
+    headers: { ...ghlHeaders(version), ...(init.headers || {}) },
+  });
+  return parseGhlResponse(res);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value) return value;
+  }
+  return null;
+}
+
+function collectHttpUrls(value: unknown, urls: string[] = []): string[] {
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) urls.push(value);
+  else if (Array.isArray(value)) value.forEach((item) => collectHttpUrls(item, urls));
+  else if (value && typeof value === "object") {
+    Object.values(value).forEach((item) => collectHttpUrls(item, urls));
+  }
+  return [...new Set(urls)];
+}
+
+async function uploadAttachmentUrlsToGhl(contactId: string, urls: string[]): Promise<string[]> {
+  const { locationId } = ghlConfig();
+  const form = new FormData();
+  form.append("locationId", locationId);
+  form.append("contactId", contactId);
+  urls.forEach((url) => form.append("attachmentUrls[]", url));
+
+  const res = await fetch(`${GHL_BASE}/conversations/messages/upload`, {
+    method: "POST",
+    headers: ghlHeaders(GHL_CONVERSATIONS_VERSION, false),
+    body: form,
+  });
+  const body = await parseGhlResponse(res);
+  const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
+  return uploaded.length ? uploaded : urls;
+}
+
+async function resolveContactId(opts: {
+  contactId?: string;
+  phone?: string;
+  name?: string;
+}): Promise<string> {
   if (opts.contactId) return opts.contactId;
   if (!opts.phone) throw new Error("Falta contactId o teléfono para identificar al contacto");
   const { locationId } = ghlConfig();
@@ -110,7 +167,11 @@ async function resolveContactId(opts: { contactId?: string; phone?: string; name
   const search = await ghlFetch(
     `/contacts/search/duplicate?locationId=${encodeURIComponent(locationId)}&number=${encodeURIComponent(opts.phone)}`,
   ).catch(() => null);
-  const found = search?.contact?.id || search?.contacts?.[0]?.id;
+  const searchBody = asRecord(search);
+  const found = firstString(
+    asRecord(searchBody.contact).id,
+    Array.isArray(searchBody.contacts) ? asRecord(searchBody.contacts[0]).id : null,
+  );
   if (found) return found;
   // 2) Crear contacto si no existe
   const created = await ghlFetch("/contacts/", {
@@ -121,7 +182,8 @@ async function resolveContactId(opts: { contactId?: string; phone?: string; name
       name: opts.name || opts.phone,
     }),
   });
-  const newId = created?.contact?.id || created?.id;
+  const createdBody = asRecord(created);
+  const newId = firstString(asRecord(createdBody.contact).id, createdBody.id);
   if (!newId) throw new Error("No se pudo crear el contacto en GHL");
   return newId;
 }
@@ -149,11 +211,17 @@ export const postMessage = createServerFn({ method: "POST" })
       message: data.text,
     };
     if (providerId) payload.conversationProviderId = providerId;
-    const result = await ghlFetch("/conversations/messages", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    return { ok: true, contactId, messageId: result?.messageId || result?.id || null };
+    const result = asRecord(
+      await ghlFetch(
+        "/conversations/messages",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+        GHL_CONVERSATIONS_VERSION,
+      ),
+    );
+    return { ok: true, contactId, messageId: firstString(result.messageId, result.id) };
   });
 
 export const postMedia = createServerFn({ method: "POST" })
@@ -161,18 +229,24 @@ export const postMedia = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
+    const attachments = await uploadAttachmentUrlsToGhl(contactId, [data.mediaUrl]);
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
-      message: data.fileName,
-      attachments: [data.mediaUrl],
+      attachments,
     };
     if (providerId) payload.conversationProviderId = providerId;
-    const result = await ghlFetch("/conversations/messages", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    return { ok: true, contactId, messageId: result?.messageId || result?.id || null };
+    const result = asRecord(
+      await ghlFetch(
+        "/conversations/messages",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+        GHL_CONVERSATIONS_VERSION,
+      ),
+    );
+    return { ok: true, contactId, messageId: firstString(result.messageId, result.id) };
   });
 
 export const postState = createServerFn({ method: "POST" })
