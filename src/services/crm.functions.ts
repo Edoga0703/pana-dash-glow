@@ -71,7 +71,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonVal
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const GHL_CONVERSATIONS_VERSION = "2021-07-28";
-const SILENT_MEDIA_CAPTION = "\u200B";
+const SILENT_MEDIA_CAPTION = " ";
 const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
 
 function ghlConfig() {
@@ -333,10 +333,10 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    // Media debe salir SIN texto/caption: cuando GHL recibe media+body en un
-    // solo payload lo enruta por marketplace y WhatsApp muestra “1 anexo
-    // enviado”/vacío. Los mensajes que sí entregan la imagen tienen body "" y
-    // userId nativo; si hay caption, lo mandamos luego como texto separado.
+    // Media debe salir sin caption real: GHL/WhatsApp ahora rechaza body ""
+    // con "text.body is required", pero si mezclamos caption+attachment lo
+    // enruta por marketplace y WhatsApp muestra el anexo vacío. Usamos un
+    // espacio para cumplir la validación y mandamos el caption luego.
     const conversationId = await resolveConversationId(contactId);
     let attachmentUrl = data.mediaUrl;
     if (conversationId) {
@@ -349,7 +349,7 @@ export const postMedia = createServerFn({ method: "POST" })
       type: "WhatsApp",
       contactId,
       userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-      message: "",
+      message: SILENT_MEDIA_CAPTION,
       attachments: [attachmentUrl],
     };
     const result = asRecord(
