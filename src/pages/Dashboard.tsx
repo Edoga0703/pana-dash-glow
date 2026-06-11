@@ -174,12 +174,8 @@ export default function Dashboard() {
     <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
       <div className="flex h-full min-h-0">
         <div
-          className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0`}
-          style={
-            typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
-              ? { width: sidebarWidth }
-              : undefined
-          }
+          className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0 md:!w-[var(--sidebar-w)]`}
+          style={{ ["--sidebar-w" as never]: `${sidebarWidth}px` }}
         >
           <ChatSidebar
             chats={chats}
