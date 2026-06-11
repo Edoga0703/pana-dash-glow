@@ -133,7 +133,7 @@ export default function ChatSidebar({
 
   // Deep search en mensajes de TODAS las conversaciones (estilo WhatsApp)
   useEffect(() => {
-    if (!isSearching || q.length < 2) {
+    if (!isSearching || q.length < 2 || searchMode !== "mensajes") {
       setDeepHits([]);
       setDeepSearching(false);
       return;
@@ -144,7 +144,6 @@ export default function ChatSidebar({
 
     const targets = chats.filter((c) => !c.archived || tab === "archivados");
 
-    // Lanzar fetch con concurrencia limitada
     const CONCURRENCY = 5;
     let index = 0;
     const cache = cacheRef.current;
@@ -171,7 +170,6 @@ export default function ChatSidebar({
       const hits: SearchHit[] = [];
       for (const c of targets) {
         const msgs = cache.get(c.contactId) || [];
-        // último mensaje (más reciente) que matchea
         let best: Message | null = null;
         for (let i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i].text && msgs[i].text.toLowerCase().includes(ql)) {
@@ -193,18 +191,29 @@ export default function ChatSidebar({
       cancelled = true;
       window.clearTimeout(debounce);
     };
-  }, [q, isSearching, chats, tab]);
+  }, [q, isSearching, chats, tab, searchMode]);
 
-  // Resultados rápidos: nombre / teléfono / último mensaje
+  function digitsOnly(s: string): string {
+    return (s || "").replace(/\D+/g, "");
+  }
+
   const quickFiltered = chats.filter((c) => {
-    const ql = q.toLowerCase();
-    const matchSearch =
-      !isSearching ||
-      c.name.toLowerCase().includes(ql) ||
-      (c.phone || "").toLowerCase().includes(ql) ||
-      (c.lastMessage || "").toLowerCase().includes(ql);
-    if (!matchSearch) return false;
-    if (isSearching) return true; // en búsqueda no aplicamos tabs
+    if (isSearching) {
+      const ql = q.toLowerCase();
+      if (searchMode === "contactos") {
+        const qd = digitsOnly(q);
+        const phoneD = digitsOnly(c.phone || "");
+        const nameMatch = c.name.toLowerCase().includes(ql);
+        const phoneMatch = qd.length > 0 && phoneD.includes(qd);
+        if (!nameMatch && !phoneMatch) return false;
+      } else {
+        const match =
+          c.name.toLowerCase().includes(ql) ||
+          (c.lastMessage || "").toLowerCase().includes(ql);
+        if (!match) return false;
+      }
+      return true;
+    }
     if (tab === "archivados") return c.archived;
     if (c.archived) return false;
     if (tab === "no_leidos") return (c.unreadCount || 0) > 0;
