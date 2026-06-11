@@ -456,7 +456,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             : "file";
 
       // 3) Notifica a n8n con la URL pública firmada
-      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v2`, {
+      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
