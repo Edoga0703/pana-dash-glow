@@ -202,7 +202,7 @@ export default function Dashboard() {
 
 
 
-        <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
+        <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-1 flex-col`}>
           {selected ? (
             <>
               <button
