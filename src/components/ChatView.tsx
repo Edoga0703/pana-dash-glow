@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   CircleUserRound,
   Image,
   LoaderCircle,
@@ -9,9 +11,11 @@ import {
   Paperclip,
   Pause,
   Pencil,
+  Search,
   Send,
   UserPlus,
   UserRoundCheck,
+  X,
   Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
