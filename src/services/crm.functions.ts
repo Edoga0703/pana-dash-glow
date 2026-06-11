@@ -280,6 +280,12 @@ async function resolveContactId(opts: {
   return newId;
 }
 
+async function resolveContactPhone(contactId: string): Promise<string | null> {
+  const body = asRecord(await ghlFetch(`/contacts/${encodeURIComponent(contactId)}`).catch(() => null));
+  const contact = asRecord(body.contact || body);
+  return firstString(contact.phone, contact.phoneNumber, contact.mobile);
+}
+
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
   const { locationId } = ghlConfig();
   const body = asRecord(
@@ -343,30 +349,26 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    const captionText = data.caption?.trim() || ".";
-    if (containsHttpUrl(captionText)) {
-      throw new Error("El texto del mensaje no puede contener links de adjuntos");
-    }
-    const payload: Record<string, unknown> = {
-      type: "WhatsApp",
-      contactId,
-      userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-      message: captionText,
-      attachments: [data.mediaUrl],
-    };
-    if (providerId) payload.conversationProviderId = providerId;
+    const phone = (data.phone || (await resolveContactPhone(contactId)) || "").trim();
+    if (!phone) throw new Error("Falta teléfono del contacto para enviar archivos por WhatsApp externo");
+    const webhookPath = process.env.N8N_MEDIA_WEBHOOK_PATH || "/webhook/pana-crm-media-v5-evolution";
     const result = asRecord(
-      await ghlFetch(
-        "/conversations/messages",
-        {
-          method: "POST",
-          body: JSON.stringify(payload),
-        },
-        GHL_MESSAGE_SEND_VERSION,
-      ),
+      await crmRequest(webhookPath, {
+        method: "POST",
+        body: JSON.stringify({
+          ...data,
+          contactId,
+          phone,
+          caption: data.caption?.trim() || "",
+        }),
+      }),
     );
-    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), attachmentUrl: data.mediaUrl };
+    return {
+      ok: result.ok !== false,
+      contactId,
+      messageId: firstString(result.messageId, result.id, asRecord(result.key).id),
+      attachmentUrl: data.mediaUrl,
+    };
   });
 
 
