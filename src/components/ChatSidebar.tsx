@@ -102,10 +102,23 @@ export default function ChatSidebar({
   const [tab, setTab] = useState<TabFilter>("todos");
   const [deepHits, setDeepHits] = useState<SearchHit[]>([]);
   const [deepSearching, setDeepSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState<"mensajes" | "contactos">("mensajes");
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const cacheRef = useRef<Map<string, Message[]>>(new Map());
 
   const q = search.trim();
   const isSearching = q.length >= 1;
+
+  // Cerrar menú al click fuera
+  useEffect(() => {
+    if (!showModeMenu) return;
+    function onClick(e: MouseEvent) {
+      if (!searchBoxRef.current?.contains(e.target as Node)) setShowModeMenu(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showModeMenu]);
 
   const counts = useMemo(() => {
     const active = chats.filter((c) => !c.archived);
