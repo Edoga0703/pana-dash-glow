@@ -381,12 +381,18 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
 
   async function handleSend() {
     const message = text.trim();
-    if (!message || sending) return;
+    if ((!message && !pendingFile) || sending) return;
     setSending(true);
     setError("");
     try {
       const contactId = chat.contactId;
-      await sendMessage({ contactId, text: message, userName });
+      if (pendingFile) {
+        await uploadFile(pendingFile);
+        setPendingFile(null);
+      }
+      if (message) {
+        await sendMessage({ contactId, text: message, userName });
+      }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
       setText("");
