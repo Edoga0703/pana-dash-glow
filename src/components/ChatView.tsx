@@ -212,6 +212,15 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
+  const [copiedPhone, setCopiedPhone] = useState(false);
+
+  const copyPhone = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(chat.phone || "");
+      setCopiedPhone(true);
+      window.setTimeout(() => setCopiedPhone(false), 1400);
+    } catch {}
+  }, [chat.phone]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
