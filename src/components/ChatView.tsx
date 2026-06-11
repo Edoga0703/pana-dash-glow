@@ -454,6 +454,58 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
       </header>
 
+      {showSearch && (
+        <div className="flex items-center gap-2 border-b border-white/8 bg-[#10141b] px-4 py-2">
+          <div className="relative flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Buscar en este chat…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches.length > 0) {
+                  e.preventDefault();
+                  setMatchIndex((i) => (e.shiftKey ? (i - 1 + matches.length) % matches.length : (i + 1) % matches.length));
+                } else if (e.key === "Escape") {
+                  setShowSearch(false);
+                }
+              }}
+              className="w-full rounded-full bg-[#202c33] py-1.5 pl-9 pr-3 text-[13px] text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-400/40"
+            />
+          </div>
+          {trimmedQuery && (
+            <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+              {matches.length === 0 ? "0" : `${Math.min(matchIndex + 1, matches.length)} / ${matches.length}`}
+            </span>
+          )}
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i - 1 + matches.length) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Anterior"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i + 1) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Siguiente"
+          >
+            <ChevronDown size={14} />
+          </button>
+          <button
+            onClick={() => setShowSearch(false)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-slate-100"
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {loading ? (
           <div className="grid h-full place-items-center text-slate-500">
@@ -468,13 +520,27 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-2">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {messages.map((message) => {
+              const isActiveMatch =
+                trimmedQuery && matches[matchIndex]?.id === message.id;
+              return (
+                <div
+                  key={message.id}
+                  ref={(el) => {
+                    if (el) messageRefs.current.set(message.id, el);
+                    else messageRefs.current.delete(message.id);
+                  }}
+                  className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
+                >
+                  <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                </div>
+              );
+            })}
             <div ref={bottomRef} />
           </div>
         )}
       </div>
+
 
       {error && (
         <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
