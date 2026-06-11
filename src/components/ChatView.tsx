@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   Check,
+  ChevronDown,
+  ChevronUp,
   CircleUserRound,
   Image,
   LoaderCircle,
@@ -9,9 +11,11 @@ import {
   Paperclip,
   Pause,
   Pencil,
+  Search,
   Send,
   UserPlus,
   UserRoundCheck,
+  X,
   Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
@@ -42,7 +46,30 @@ function isImageUrl(url: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const ql = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  const lower = text.toLowerCase();
+  while (i < text.length) {
+    const idx = lower.indexOf(ql, i);
+    if (idx === -1) {
+      parts.push(text.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark key={idx} className="rounded-sm bg-emerald-400/40 text-white px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>,
+    );
+    i = idx + query.length;
+  }
+  return parts;
+}
+
+function MessageBubble({ message, highlight }: { message: Message; highlight?: string }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
 
@@ -64,7 +91,9 @@ function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
         {message.text && (
-          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+          <p className="whitespace-pre-wrap break-words text-sm leading-5">
+            {highlight ? highlightText(message.text, highlight) : message.text}
+          </p>
         )}
         {message.mediaUrl && (
           isAudioUrl(message.mediaUrl) ? (
@@ -179,10 +208,46 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [nombreMostrado, setNombreMostrado] = useState(chat.name);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const chatIdRef = useRef(chat.contactId);
+
+  const trimmedQuery = searchQuery.trim();
+  const matches = trimmedQuery
+    ? messages.filter((m) => m.text?.toLowerCase().includes(trimmedQuery.toLowerCase()))
+    : [];
+
+  useEffect(() => {
+    setMatchIndex(0);
+  }, [trimmedQuery, chat.contactId]);
+
+  useEffect(() => {
+    if (!showSearch || !trimmedQuery || matches.length === 0) return;
+    const safeIdx = Math.min(matchIndex, matches.length - 1);
+    const msg = matches[safeIdx];
+    const el = messageRefs.current.get(msg.id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [matchIndex, matches, showSearch, trimmedQuery]);
+
+  useEffect(() => {
+    if (showSearch) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else {
+      setSearchQuery("");
+    }
+  }, [showSearch]);
+
+  // Reset search al cambiar de chat
+  useEffect(() => {
+    setShowSearch(false);
+    setSearchQuery("");
+  }, [chat.contactId]);
 
   const isRegistered = !!(chat.name && chat.name !== "Sin nombre");
 
@@ -341,6 +406,17 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
+            onClick={() => setShowSearch((v) => !v)}
+            title="Buscar en este chat"
+            className={`grid size-9 place-items-center rounded-md border transition-colors ${
+              showSearch
+                ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-300"
+                : "border-white/10 text-slate-400 hover:bg-white/5 hover:text-emerald-300"
+            }`}
+          >
+            <Search size={15} />
+          </button>
+          <button
             onClick={() => setShowRegister(true)}
             title={isRegistered ? "Editar contacto" : "Registrar contacto"}
             className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
@@ -378,6 +454,58 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
       </header>
 
+      {showSearch && (
+        <div className="flex items-center gap-2 border-b border-white/8 bg-[#10141b] px-4 py-2">
+          <div className="relative flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Buscar en este chat…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches.length > 0) {
+                  e.preventDefault();
+                  setMatchIndex((i) => (e.shiftKey ? (i - 1 + matches.length) % matches.length : (i + 1) % matches.length));
+                } else if (e.key === "Escape") {
+                  setShowSearch(false);
+                }
+              }}
+              className="w-full rounded-full bg-[#202c33] py-1.5 pl-9 pr-3 text-[13px] text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-400/40"
+            />
+          </div>
+          {trimmedQuery && (
+            <span className="shrink-0 text-[11px] text-slate-400 tabular-nums">
+              {matches.length === 0 ? "0" : `${Math.min(matchIndex + 1, matches.length)} / ${matches.length}`}
+            </span>
+          )}
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i - 1 + matches.length) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Anterior"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            disabled={matches.length === 0}
+            onClick={() => setMatchIndex((i) => (i + 1) % matches.length)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-emerald-300 disabled:opacity-30"
+            title="Siguiente"
+          >
+            <ChevronDown size={14} />
+          </button>
+          <button
+            onClick={() => setShowSearch(false)}
+            className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-slate-100"
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {loading ? (
           <div className="grid h-full place-items-center text-slate-500">
@@ -392,13 +520,27 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           </div>
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-2">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {messages.map((message) => {
+              const isActiveMatch =
+                trimmedQuery && matches[matchIndex]?.id === message.id;
+              return (
+                <div
+                  key={message.id}
+                  ref={(el) => {
+                    if (el) messageRefs.current.set(message.id, el);
+                    else messageRefs.current.delete(message.id);
+                  }}
+                  className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
+                >
+                  <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                </div>
+              );
+            })}
             <div ref={bottomRef} />
           </div>
         )}
       </div>
+
 
       {error && (
         <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
