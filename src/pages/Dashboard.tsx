@@ -172,8 +172,15 @@ export default function Dashboard() {
 
   return (
     <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
-      <div className="grid h-full min-h-0 md:grid-cols-[360px_minmax(0,1fr)]">
-        <div className={`${selected ? "hidden md:block" : "block"} min-h-0`}>
+      <div className="flex h-full min-h-0">
+        <div
+          className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0`}
+          style={
+            typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+              ? { width: sidebarWidth }
+              : undefined
+          }
+        >
           <ChatSidebar
             chats={chats}
             selectedId={selected?.contactId || null}
@@ -182,6 +189,17 @@ export default function Dashboard() {
             onRefresh={() => loadInbox(true)}
           />
         </div>
+
+        {/* Separador arrastrable (solo en desktop) */}
+        <div
+          onMouseDown={() => setResizing(true)}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+          title="Arrastra para ajustar · doble clic para restaurar"
+          className={`hidden md:block w-1 shrink-0 cursor-col-resize bg-white/5 hover:bg-emerald-400/40 transition-colors ${
+            resizing ? "bg-emerald-400/60" : ""
+          }`}
+        />
+
 
 
         <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
