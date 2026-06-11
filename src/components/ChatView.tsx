@@ -311,7 +311,19 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   }, [chat.contactId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    if (!didInitialScrollRef.current) {
+      const targetEl = firstUnreadId ? messageRefs.current.get(firstUnreadId) : null;
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: "auto", block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      }
+      didInitialScrollRef.current = true;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   async function handleSend() {
