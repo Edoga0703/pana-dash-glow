@@ -394,10 +394,18 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setError("");
     try {
       const contactId = chat.contactId;
-      for (const f of pendingFiles) {
-        await uploadFile(f);
+      const remaining: File[] = [];
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const f = pendingFiles[i];
+        try {
+          await uploadFile(f);
+        } catch (err) {
+          // Conserva los archivos que aún no se subieron para reintentar
+          remaining.push(...pendingFiles.slice(i));
+          throw err;
+        }
       }
-      setPendingFiles([]);
+      setPendingFiles(remaining);
       if (message) {
         await sendMessage({ contactId, text: message, userName });
       }
@@ -464,7 +472,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       setMessages(updated);
       onStateChanged?.();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
+      const msg = reason instanceof Error ? reason.message : "No se pudo enviar el archivo";
+      setError(msg);
+      throw reason instanceof Error ? reason : new Error(msg);
     } finally {
       setUploadingImage(false);
     }
