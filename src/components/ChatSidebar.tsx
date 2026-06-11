@@ -279,7 +279,18 @@ export default function ChatSidebar({
   function renderChatRow(chat: Chat, opts?: { matchedMessage?: Message }) {
     const unread = (chat.unreadCount || 0) > 0;
     const selected = selectedId === chat.contactId;
-    const preview = opts?.matchedMessage?.text || chat.lastMessage || chat.phone;
+    const raw = opts?.matchedMessage?.text || chat.lastMessage || "";
+    function mediaLabel(s: string): string | null {
+      if (!s) return null;
+      const t = s.trim();
+      if (/^https?:\/\/\S+\.(jpe?g|png|gif|webp|heic)(\?|$)/i.test(t)) return "📷 Foto";
+      if (/^https?:\/\/\S+\.(mp4|mov|webm|mkv|3gp)(\?|$)/i.test(t)) return "🎥 Video";
+      if (/^https?:\/\/\S+\.(ogg|mp3|m4a|wav|opus)(\?|$)/i.test(t)) return "🎤 Audio";
+      if (/^https?:\/\/\S+\.(pdf|docx?|xlsx?|pptx?|zip|rar)(\?|$)/i.test(t)) return "📎 Archivo";
+      if (/^https?:\/\/\S+$/i.test(t) && !/\s/.test(t)) return "📎 Archivo";
+      return null;
+    }
+    const preview = mediaLabel(raw) || raw || chat.phone;
     const showSnippet = !!opts?.matchedMessage && isSearching;
     const snip = showSnippet ? snippetAround(preview, q) : null;
     const ts = opts?.matchedMessage?.createdAt || chat.lastMessageTs;

@@ -242,21 +242,29 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [searchQuery, setSearchQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [copiedPhone, setCopiedPhone] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!pendingFile) {
-      setPendingPreview(null);
+    if (pendingFiles.length === 0) {
+      setPendingPreviews([]);
       return;
     }
-    if (pendingFile.type.startsWith("image/") || pendingFile.type.startsWith("video/")) {
-      const url = URL.createObjectURL(pendingFile);
-      setPendingPreview(url);
-      return () => URL.revokeObjectURL(url);
-    }
-    setPendingPreview(null);
-  }, [pendingFile]);
+    const urls = pendingFiles.map((f) =>
+      f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : "",
+    );
+    setPendingPreviews(urls);
+    return () => urls.forEach((u) => u && URL.revokeObjectURL(u));
+  }, [pendingFiles]);
+
+  function addPendingFiles(files: File[] | FileList | null) {
+    if (!files) return;
+    const arr = Array.from(files);
+    if (arr.length) setPendingFiles((prev) => [...prev, ...arr]);
+  }
+  function removePendingFile(i: number) {
+    setPendingFiles((prev) => prev.filter((_, idx) => idx !== i));
+  }
 
   const copyPhone = useCallback(async () => {
     try {
@@ -381,15 +389,15 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
 
   async function handleSend() {
     const message = text.trim();
-    if ((!message && !pendingFile) || sending) return;
+    if ((!message && pendingFiles.length === 0) || sending) return;
     setSending(true);
     setError("");
     try {
       const contactId = chat.contactId;
-      if (pendingFile) {
-        await uploadFile(pendingFile);
-        setPendingFile(null);
+      for (const f of pendingFiles) {
+        await uploadFile(f);
       }
+      setPendingFiles([]);
       if (message) {
         await sendMessage({ contactId, text: message, userName });
       }
@@ -441,31 +449,31 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   }
 
   function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) setPendingFile(file);
+    addPendingFiles(event.target.files);
     event.target.value = "";
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const items = e.clipboardData?.items;
     if (!items) return;
+    const files: File[] = [];
     for (const item of Array.from(items)) {
       if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          setPendingFile(file);
-          return;
-        }
+        const f = item.getAsFile();
+        if (f) files.push(f);
       }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addPendingFiles(files);
     }
   }
 
   function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
       e.preventDefault();
-      setPendingFile(file);
+      addPendingFiles(files);
     }
   }
 
@@ -684,30 +692,38 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             onClose={() => setShowQuickReplies(false)}
           />
         )}
-        {pendingFile && (
-          <div className="mx-auto mb-2 flex max-w-4xl items-center gap-3 rounded-md border border-white/10 bg-black/30 p-2">
-            {pendingPreview && pendingFile.type.startsWith("image/") ? (
-              <img src={pendingPreview} alt="" className="h-14 w-14 rounded object-cover" />
-            ) : pendingPreview && pendingFile.type.startsWith("video/") ? (
-              <video src={pendingPreview} className="h-14 w-14 rounded object-cover" />
-            ) : (
-              <div className="grid h-14 w-14 place-items-center rounded bg-white/5 text-slate-400">
-                <Paperclip size={18} />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs text-slate-200">{pendingFile.name || "Archivo"}</p>
-              <p className="text-[11px] text-slate-500">
-                {(pendingFile.size / 1024).toFixed(0)} KB · listo para enviar
-              </p>
-            </div>
-            <button
-              onClick={() => setPendingFile(null)}
-              title="Quitar adjunto"
-              className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-rose-300"
-            >
-              <X size={14} />
-            </button>
+        {pendingFiles.length > 0 && (
+          <div className="mx-auto mb-2 flex max-w-4xl flex-wrap gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+            {pendingFiles.map((f, i) => {
+              const preview = pendingPreviews[i];
+              return (
+                <div
+                  key={i}
+                  className="group relative flex items-center gap-2 rounded-md border border-white/10 bg-black/30 p-1.5 pr-2 max-w-[220px]"
+                >
+                  {preview && f.type.startsWith("image/") ? (
+                    <img src={preview} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                  ) : preview && f.type.startsWith("video/") ? (
+                    <video src={preview} className="h-12 w-12 shrink-0 rounded object-cover" />
+                  ) : (
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white/5 text-slate-400">
+                      <Paperclip size={16} />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] text-slate-200">{f.name || "Archivo"}</p>
+                    <p className="text-[10px] text-slate-500">{(f.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    onClick={() => removePendingFile(i)}
+                    title="Quitar"
+                    className="ml-1 grid size-5 shrink-0 place-items-center rounded text-slate-400 hover:bg-white/5 hover:text-rose-300"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="mx-auto flex max-w-4xl items-end gap-2">
@@ -734,6 +750,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             ref={fileInputRef}
             type="file"
             accept="image/*,video/*,.pdf,.doc,.docx"
+            multiple
             className="hidden"
             onChange={handleImageUpload}
           />
@@ -756,7 +773,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             style={{ minHeight: "44px", maxHeight: "160px" }}
           />
           <button
-            disabled={(!text.trim() && !pendingFile) || sending || uploadingImage}
+            disabled={(!text.trim() && pendingFiles.length === 0) || sending || uploadingImage}
             onClick={handleSend}
             title="Enviar mensaje"
             className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600"
