@@ -39,15 +39,56 @@ function notify(title: string, body: string) {
 }
 
 
+const SIDEBAR_MIN = 280;
+const SIDEBAR_MAX = 560;
+const SIDEBAR_DEFAULT = 360;
+
 export default function Dashboard() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT;
+    const stored = Number(window.localStorage.getItem("crm:sidebarWidth"));
+    return stored >= SIDEBAR_MIN && stored <= SIDEBAR_MAX ? stored : SIDEBAR_DEFAULT;
+  });
+  const [resizing, setResizing] = useState(false);
   const prevUnreadRef = useRef<Map<string, number>>(new Map());
   const firstLoadRef = useRef(true);
   const selectedIdRef = useRef<string | null>(null);
+
+  // Drag handle del separador
+  useEffect(() => {
+    if (!resizing) return;
+    function onMove(e: MouseEvent) {
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+      setSidebarWidth(w);
+    }
+    function onUp() {
+      setResizing(false);
+      try {
+        window.localStorage.setItem("crm:sidebarWidth", String(sidebarWidth));
+      } catch {}
+    }
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizing, sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("crm:sidebarWidth", String(sidebarWidth));
+    } catch {}
+  }, [sidebarWidth]);
 
   useEffect(() => {
     selectedIdRef.current = selected?.contactId ?? null;
