@@ -71,8 +71,8 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonVal
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const GHL_CONVERSATIONS_VERSION = "2021-07-28";
+const GHL_MESSAGE_SEND_VERSION = "v3";
 const GHL_UPLOAD_VERSION = "v3";
-const SILENT_MEDIA_CAPTION = " ";
 const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
 
 function ghlConfig() {
@@ -214,7 +214,9 @@ async function uploadAttachmentUrlsToGhl(
   for (const file of files) {
     const downloaded = await fetch(file.url);
     if (!downloaded.ok) throw new Error(`No se pudo descargar el adjunto (${downloaded.status})`);
-    const blob = await downloaded.blob();
+    const blob = new Blob([await downloaded.arrayBuffer()], {
+      type: file.mimeType || downloaded.headers.get("content-type") || "application/octet-stream",
+    });
     form.append("fileAttachment", blob, file.fileName || "archivo");
   }
 
@@ -225,7 +227,8 @@ async function uploadAttachmentUrlsToGhl(
   });
   const body = await parseGhlResponse(res);
   const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
-  return uploaded.length ? uploaded : files.map((file) => file.url);
+  if (!uploaded.length) throw new Error("GHL no devolvió una URL para el adjunto subido");
+  return uploaded;
 }
 
 async function resolveConversationId(contactId: string): Promise<string | null> {
@@ -336,24 +339,19 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    // Media debe salir sin caption real: GHL/WhatsApp ahora rechaza body ""
-    // con "text.body is required", pero si mezclamos caption+attachment lo
-    // enruta por marketplace y WhatsApp muestra el anexo vacío. Usamos un
-    // espacio para cumplir la validación y mandamos el caption luego.
     const conversationId = await resolveConversationId(contactId);
-    let attachmentUrl = data.mediaUrl;
-    if (conversationId) {
-      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [
-        { url: data.mediaUrl, fileName: data.fileName, mimeType: data.mimeType },
-      ]).catch(() => [data.mediaUrl]);
-      attachmentUrl = uploaded[0] || data.mediaUrl;
-    }
+    if (!conversationId) throw new Error("No se encontró la conversación para subir el adjunto");
+    const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [
+      { url: data.mediaUrl, fileName: data.fileName, mimeType: data.mimeType },
+    ]);
+    const attachmentUrl = uploaded[0];
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
+    const captionText = data.caption?.trim() || `Archivo adjunto: ${data.fileName}`;
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
       userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-      message: SILENT_MEDIA_CAPTION,
+      message: captionText,
       attachments: [attachmentUrl],
     };
     if (providerId) payload.conversationProviderId = providerId;
@@ -364,25 +362,10 @@ export const postMedia = createServerFn({ method: "POST" })
           method: "POST",
           body: JSON.stringify(payload),
         },
-        GHL_CONVERSATIONS_VERSION,
+        GHL_MESSAGE_SEND_VERSION,
       ),
     );
-    const captionText = data.caption?.trim();
-    let captionMessageId: string | null = null;
-    if (captionText) {
-      const captionResult = asRecord(
-        await ghlFetch(
-          "/conversations/messages",
-          {
-            method: "POST",
-            body: JSON.stringify({ type: "WhatsApp", contactId, message: captionText }),
-          },
-          GHL_CONVERSATIONS_VERSION,
-        ),
-      );
-      captionMessageId = firstString(captionResult.messageId, captionResult.id);
-    }
-    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), captionMessageId };
+    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), attachmentUrl };
   });
 
 export const postState = createServerFn({ method: "POST" })
