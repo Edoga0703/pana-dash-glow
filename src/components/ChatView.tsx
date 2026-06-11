@@ -1,21 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Bot,
-  Check,
-  CircleUserRound,
-  Image,
-  LoaderCircle,
-  MessageSquareOff,
-  Paperclip,
-  Pause,
-  Send,
-  UserPlus,
-  UserRoundCheck,
-  Zap,
-} from "lucide-react";
-import type { Chat, Message } from "../types";
-import { changeState, fetchChat, sendMessage } from "../services/api";
-import QuickReplies from "./QuickReplies";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { Chat, Message } from '../types';
+import { fetchChat, sendMessage, changeState } from '../services/api';
+import { API_CONFIG } from '../config/api';
 
 interface ChatViewProps {
   chat: Chat;
@@ -23,159 +9,105 @@ interface ChatViewProps {
   onStateChanged?: () => void;
 }
 
-function formatTime(value: string): string {
-  return value
-    ? new Date(value).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })
-    : "";
+function formatTime(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
 }
 
-function MessageBubble({ message }: { message: Message }) {
-  const incoming = message.role === "user";
-  const human = message.senderType === "human";
-  const isImage =
-    message.mediaUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.mediaUrl);
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return 'Hoy';
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Ayer';
+  return d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function groupByDate(messages: Message[]): { date: string; messages: Message[] }[] {
+  const groups: Record<string, Message[]> = {};
+  for (const msg of messages) {
+    const key = formatDate(msg.createdAt);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(msg);
+  }
+  return Object.entries(groups).map(([date, messages]) => ({ date, messages }));
+}
+
+function isAudioUrl(url: string): boolean {
+  if (!url) return false;
+  return /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
+    url.includes('audio') || url.includes('ptt') || url.includes('voice');
+}
+
+function isImageUrl(url: string): boolean {
+  if (!url) return false;
+  return /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url);
+}
+
+function MediaContent({ url }: { url: string }) {
+  if (!url) return null;
+
+  if (isAudioUrl(url)) {
+    return (
+      <div className="mt-1.5 bg-black/20 rounded-lg p-2">
+        <audio controls preload="metadata" className="w-full max-w-[280px] h-8" style={{ minWidth: '200px' }}>
+          <source src={url} />
+          Tu navegador no soporta audio
+        </audio>
+      </div>
+    );
+  }
+
+  if (isImageUrl(url)) {
+    return (
+      <div className="mt-1.5">
+        <img
+          src={url}
+          alt="Adjunto"
+          className="max-w-[280px] max-h-[300px] rounded-lg cursor-pointer object-cover"
+          onClick={() => window.open(url, '_blank')}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
-      <div
-        className={`max-w-[78%] rounded-md border px-3 py-2 shadow-sm ${
-          incoming
-            ? "border-white/8 bg-[#222731] text-slate-100"
-            : human
-              ? "border-cyan-300/20 bg-cyan-500/15 text-cyan-50"
-              : "border-emerald-300/15 bg-emerald-500/15 text-emerald-50"
-        }`}
-      >
-        {!incoming && (
-          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-65">
-            {human ? <CircleUserRound size={11} /> : <Bot size={11} />}
-            {human ? "Administrador" : "Pana Bot"}
-          </div>
-        )}
-        {message.text && (
-          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
-        )}
-        {message.mediaUrl && (
-          isImage ? (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
-              <img
-                src={message.mediaUrl}
-                alt="adjunto"
-                className="max-w-full rounded-md border border-white/10"
-                style={{ maxHeight: 220 }}
-              />
-            </a>
-          ) : (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline">
-              <Paperclip size={12} /> Abrir archivo adjunto
-            </a>
-          )
-        )}
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-50">
-          {formatTime(message.createdAt)}
-          {!incoming && <Check size={11} />}
-        </div>
-      </div>
-    </div>
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className="text-xs underline opacity-80 mt-1 block">
+      Ver adjunto
+    </a>
   );
 }
 
-interface RegisterModalProps {
-  chat: Chat;
-  onClose: () => void;
-  onSuccess: (nombreNuevo: string) => void;
-}
-
-function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
-  const [nombre, setNombre] = useState(chat.name === "Sin nombre" ? "" : chat.name);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-
-  function handleCopyPhone() {
-    navigator.clipboard.writeText(chat.phone).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-
-  async function handleSave() {
-    if (!nombre.trim()) {
-      setError("El nombre es requerido");
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("https://n8n.cuentastupana.com/webhook/pana-crm-contact-v1", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CRM-SECRET": "28031597Ef.",
-        },
-        body: JSON.stringify({
-          contactId: chat.contactId,
-          nombre: nombre.trim(),
-          telefono: chat.phone,
-        }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Error al registrar");
-      onSuccess(nombre.trim());
-      onClose();
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Error al registrar contacto");
-    } finally {
-      setSaving(false);
-    }
-  }
+function MessageBubble({ msg }: { msg: Message }) {
+  const isClient = msg.role === 'user';
+  const isHuman = msg.senderType === 'human';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-sm rounded-xl border border-white/10 bg-[#141820] p-6 shadow-2xl">
-        <h3 className="mb-4 text-sm font-semibold text-white flex items-center gap-2">
-          <UserPlus size={16} className="text-cyan-400" />
-          Registrar contacto
-        </h3>
-        <div className="flex flex-col gap-3">
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Nombre</label>
-            <input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              placeholder="Nombre completo"
-              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Teléfono WhatsApp</label>
-            <button
-              onClick={handleCopyPhone}
-              className="w-full rounded-md border border-white/10 bg-black/10 px-3 py-2 text-sm text-left transition-colors hover:border-cyan-400/30 hover:bg-cyan-400/5"
-            >
-              <span className="text-slate-300">{chat.phone}</span>
-              <span className="float-right text-[10px] text-slate-500">
-                {copied ? "✓ Copiado" : "clic para copiar"}
-              </span>
-            </button>
-          </div>
-          {error && <p className="text-xs text-rose-400">{error}</p>}
-          <div className="flex gap-2 justify-end mt-2">
-            <button
-              onClick={onClose}
-              className="rounded-md border border-white/10 px-4 py-2 text-xs text-slate-400 hover:text-white"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-md bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
-            >
-              {saving ? "Guardando..." : "Registrar"}
-            </button>
-          </div>
-        </div>
+    <div className={`flex ${isClient ? 'justify-start' : 'justify-end'} mb-2`}>
+      <div
+        className={`max-w-[75%] rounded-xl px-3 py-2 ${
+          isClient
+            ? 'bg-gray-700 text-gray-100'
+            : isHuman
+            ? 'bg-amber-700 text-white'
+            : 'bg-emerald-700 text-white'
+        }`}
+      >
+        {!isClient && (
+          <p className="text-[10px] font-medium opacity-70 mb-0.5">
+            {isHuman ? 'Admin' : 'Pana Bot'}
+          </p>
+        )}
+        <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
+        {msg.mediaUrl && <MediaContent url={msg.mediaUrl} />}
+        <p className={`text-[10px] mt-1 text-right ${isClient ? 'text-gray-400' : 'opacity-60'}`}>
+          {formatTime(msg.createdAt)}
+        </p>
       </div>
     </div>
   );
@@ -184,265 +116,204 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
 export default function ChatView({ chat, userName, onStateChanged }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [text, setText] = useState("");
+  const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [changingState, setChangingState] = useState(false);
-  const [error, setError] = useState("");
-  const [showQuickReplies, setShowQuickReplies] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
-  const [nombreMostrado, setNombreMostrado] = useState(chat.name);
+  const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatIdRef = useRef(chat.contactId);
 
-  useEffect(() => {
-    setNombreMostrado(chat.name);
-  }, [chat.name]);
+  // Auto-resize del textarea
+  const adjustTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '40px';
+    const maxH = 160; // maximo ~6 lineas
+    el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
+  }, []);
 
+  useEffect(() => { adjustTextarea(); }, [text, adjustTextarea]);
+
+  // Cargar mensajes al seleccionar chat
   useEffect(() => {
-    let active = true;
-    setMessages([]);
-    setText("");
+    let cancelled = false;
+    chatIdRef.current = chat.contactId;
     setLoading(true);
-    setError("");
-    setShowQuickReplies(false);
+    setMessages([]);
+    setError('');
+
     fetchChat(chat.contactId)
-      .then((result) => active && setMessages(result))
-      .catch((reason) => active && setError(reason.message || "No se pudo cargar el historial"))
-      .finally(() => active && setLoading(false));
-    return () => { active = false; };
+      .then((msgs) => {
+        if (!cancelled && chatIdRef.current === chat.contactId) {
+          setMessages([...msgs].reverse());
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err.message);
+          setLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
   }, [chat.contactId]);
 
+  // Polling: refrescar mensajes del chat abierto cada X segundos
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const interval = setInterval(() => {
+      if (chatIdRef.current !== chat.contactId) return;
+      fetchChat(chat.contactId)
+        .then((msgs) => {
+          if (chatIdRef.current === chat.contactId) {
+            const reversed = [...msgs].reverse();
+            setMessages((prev) => {
+              // Solo actualizar si hay mensajes nuevos
+              if (reversed.length !== prev.length) return reversed;
+              const lastNew = reversed[reversed.length - 1];
+              const lastOld = prev[prev.length - 1];
+              if (lastNew && lastOld && lastNew.id !== lastOld.id) return reversed;
+              return prev;
+            });
+          }
+        })
+        .catch(() => {}); // silenciar errores de polling
+    }, API_CONFIG.pollingInterval);
+
+    return () => clearInterval(interval);
+  }, [chat.contactId]);
+
+  // Scroll al fondo cuando llegan mensajes nuevos
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   async function handleSend() {
-    const message = text.trim();
-    if (!message || sending) return;
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+
     setSending(true);
-    setError("");
+    setError('');
+
     try {
-      const contactId = chat.contactId;
-      await sendMessage({ contactId, text: message, userName });
-      const updated = await fetchChat(contactId);
-      if (chat.contactId === contactId) setMessages(updated);
-      setText("");
-      onStateChanged?.();
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo enviar el mensaje");
+      await sendMessage({
+        contactId: chat.contactId,
+        text: trimmed,
+        userName,
+      });
+
+      const localMsg: Message = {
+        id: `local-${Date.now()}`,
+        role: 'assistant',
+        text: trimmed,
+        createdAt: new Date().toISOString(),
+        senderType: 'human',
+        isRead: true,
+      };
+      setMessages((prev) => [...prev, localMsg]);
+      setText('');
+      textareaRef.current?.focus();
+    } catch (err: any) {
+      setError(err.message || 'Error al enviar');
     } finally {
       setSending(false);
     }
   }
 
-  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploadingImage(true);
-    setError("");
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = (reader.result as string).split(",")[1];
-          const response = await fetch("https://n8n.cuentastupana.com/webhook/pana-crm-media-v1", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CRM-SECRET": "28031597Ef.",
-            },
-            body: JSON.stringify({
-              contactId: chat.contactId,
-              fileName: file.name,
-              mimeType: file.type,
-              base64,
-              userName,
-            }),
-          });
-          if (!response.ok) throw new Error("Error al subir el archivo");
-          const updated = await fetchChat(chat.contactId);
-          setMessages(updated);
-          onStateChanged?.();
-        } catch (reason: unknown) {
-          setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
-        } finally {
-          setUploadingImage(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Error al leer el archivo");
-      setUploadingImage(false);
-    }
-    event.target.value = "";
-  }
-
-  async function handleState(state: "bot" | "humano" | "pausado") {
-    setChangingState(true);
-    setError("");
+  async function handleChangeState(state: 'bot' | 'humano' | 'pausado') {
     try {
       await changeState({ contactId: chat.contactId, state, userName });
       onStateChanged?.();
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo cambiar el estado");
-    } finally {
-      setChangingState(false);
+    } catch (err: any) {
+      setError(err.message || 'Error al cambiar estado');
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  const grouped = groupByDate(messages);
+
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[#0d1015]">
-      {showRegister && (
-        <RegisterModal
-          chat={chat}
-          onClose={() => setShowRegister(false)}
-          onSuccess={(nombreNuevo) => {
-            setNombreMostrado(nombreNuevo);
-            onStateChanged?.();
-          }}
-        />
-      )}
-
-      <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/8 bg-[#141820] px-4">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-white">{nombreMostrado}</h2>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-            <span>{chat.phone}</span>
-            <span>·</span>
-            <span className={chat.status === "bot" ? "text-emerald-300" : "text-amber-200"}>
-              {chat.status === "bot"
-                ? "IA habilitada"
-                : chat.status === "humano"
-                  ? "Atención humana"
-                  : "Chat pausado"}
-            </span>
-          </div>
+    <div className="flex flex-col h-full bg-gray-950">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
+        <div>
+          <h3 className="text-white font-semibold">{chat.name}</h3>
+          <p className="text-xs text-gray-400">{chat.phone}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            onClick={() => setShowRegister(true)}
-            title="Registrar contacto"
-            className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
-          >
-            <UserPlus size={15} />
-          </button>
-          {chat.status !== "humano" && (
-            <button
-              disabled={changingState}
-              onClick={() => handleState("humano")}
-              className="flex h-9 items-center gap-2 rounded-md border border-amber-300/20 bg-amber-400/10 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-400/15 disabled:opacity-50"
-            >
-              <UserRoundCheck size={15} /> <span className="hidden sm:inline">Tomar chat</span>
+        <div className="flex gap-2">
+          {chat.status !== 'humano' && (
+            <button onClick={() => handleChangeState('humano')}
+              className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors">
+              Tomar chat
             </button>
           )}
-          {chat.status !== "pausado" && (
-            <button
-              disabled={changingState}
-              onClick={() => handleState("pausado")}
-              title="Pausar chat"
-              className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 disabled:opacity-50"
-            >
-              <Pause size={15} />
-            </button>
-          )}
-          {chat.status !== "bot" && (
-            <button
-              disabled={changingState}
-              onClick={() => handleState("bot")}
-              className="flex h-9 items-center gap-2 rounded-md bg-emerald-500 px-3 text-xs font-bold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
-            >
-              <Bot size={15} /> <span className="hidden sm:inline">Reactivar IA</span>
+          {chat.status !== 'bot' && (
+            <button onClick={() => handleChangeState('bot')}
+              className="text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors">
+              Reactivar bot
             </button>
           )}
         </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
-        {loading ? (
-          <div className="grid h-full place-items-center text-slate-500">
-            <LoaderCircle className="animate-spin" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="grid h-full place-items-center text-center text-slate-600">
-            <div>
-              <MessageSquareOff className="mx-auto mb-3" />
-              <p className="text-sm">Todavía no hay mensajes guardados.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-2">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
-            <div ref={bottomRef} />
-          </div>
-        )}
       </div>
 
+      {/* Mensajes */}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {loading ? (
+          <div className="text-center text-gray-500 text-sm mt-8">Cargando mensajes...</div>
+        ) : messages.length === 0 ? (
+          <div className="text-center text-gray-500 text-sm mt-8">Sin mensajes</div>
+        ) : (
+          grouped.map((group) => (
+            <div key={group.date}>
+              <div className="flex justify-center my-3">
+                <span className="text-[11px] text-gray-500 bg-gray-800/50 px-3 py-1 rounded-full">
+                  {group.date}
+                </span>
+              </div>
+              {group.messages.map((msg) => (
+                <MessageBubble key={msg.id} msg={msg} />
+              ))}
+            </div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Error */}
       {error && (
-        <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
+        <div className="px-4 py-2 bg-red-900/50 text-red-300 text-xs">
           {error}
         </div>
       )}
 
-      <footer className="relative border-t border-white/8 bg-[#141820] p-3">
-        {showQuickReplies && (
-          <QuickReplies
-            onSelect={(t) => setText(t)}
-            onClose={() => setShowQuickReplies(false)}
-          />
-        )}
-        <div className="mx-auto flex max-w-4xl items-end gap-2">
-          <button
-            onClick={() => setShowQuickReplies((v) => !v)}
-            title="Respuestas rápidas"
-            className={`grid size-11 shrink-0 place-items-center rounded-md border transition-colors ${
-              showQuickReplies
-                ? "border-cyan-400/40 bg-cyan-400/15 text-cyan-300"
-                : "border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
-            }`}
-          >
-            <Zap size={18} />
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            title="Enviar imagen o archivo"
-            disabled={uploadingImage}
-            className="grid size-11 shrink-0 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300 disabled:opacity-50"
-          >
-            {uploadingImage ? <LoaderCircle size={18} className="animate-spin" /> : <Image size={18} />}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*,.pdf,.doc,.docx"
-            className="hidden"
-            onChange={handleImageUpload}
-          />
+      {/* Input con auto-resize */}
+      <div className="p-3 border-t border-gray-800 bg-gray-900">
+        <div className="flex items-end gap-2">
           <textarea
+            ref={textareaRef}
             value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Escribe un mensaje..."
             rows={1}
-            placeholder="Escribe una respuesta..."
-            className="min-h-11 max-h-32 flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
+            className="flex-1 px-3 py-2 bg-gray-800 text-gray-200 text-sm rounded-lg border border-gray-700 focus:outline-none focus:border-emerald-500 placeholder-gray-500 resize-none overflow-y-auto"
+            style={{ minHeight: '40px', maxHeight: '160px' }}
           />
           <button
-            disabled={!text.trim() || sending}
             onClick={handleSend}
-            title="Enviar mensaje"
-            className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600"
+            disabled={!text.trim() || sending}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
           >
-            {sending ? <LoaderCircle size={18} className="animate-spin" /> : <Send size={18} />}
+            {sending ? '...' : 'Enviar'}
           </button>
         </div>
-      </footer>
-    </section>
+      </div>
+    </div>
   );
 }
