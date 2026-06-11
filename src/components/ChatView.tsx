@@ -217,6 +217,16 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const chatIdRef = useRef(chat.contactId);
+  const initialUnreadRef = useRef(chat.unreadCount || 0);
+  const didInitialScrollRef = useRef(false);
+
+  const initialUnread = initialUnreadRef.current;
+  let firstUnreadId: string | null = null;
+  if (initialUnread > 0) {
+    const incoming = messages.filter((m) => m.role === "user");
+    const target = incoming[incoming.length - initialUnread];
+    firstUnreadId = target?.id || null;
+  }
 
   const trimmedQuery = searchQuery.trim();
   const matches = trimmedQuery
@@ -267,6 +277,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   useEffect(() => {
     let active = true;
     chatIdRef.current = chat.contactId;
+    initialUnreadRef.current = chat.unreadCount || 0;
+    didInitialScrollRef.current = false;
     setMessages([]);
     setText("");
     setLoading(true);
@@ -299,7 +311,19 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   }, [chat.contactId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    if (!didInitialScrollRef.current) {
+      const targetEl = firstUnreadId ? messageRefs.current.get(firstUnreadId) : null;
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: "auto", block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      }
+      didInitialScrollRef.current = true;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   async function handleSend() {
@@ -523,16 +547,27 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             {messages.map((message) => {
               const isActiveMatch =
                 trimmedQuery && matches[matchIndex]?.id === message.id;
+              const showUnreadDivider = message.id === firstUnreadId;
               return (
-                <div
-                  key={message.id}
-                  ref={(el) => {
-                    if (el) messageRefs.current.set(message.id, el);
-                    else messageRefs.current.delete(message.id);
-                  }}
-                  className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
-                >
-                  <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                <div key={message.id}>
+                  {showUnreadDivider && (
+                    <div className="my-2 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                        {initialUnread} {initialUnread === 1 ? "mensaje no leído" : "mensajes no leídos"}
+                      </span>
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                    </div>
+                  )}
+                  <div
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(message.id, el);
+                      else messageRefs.current.delete(message.id);
+                    }}
+                    className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
+                  >
+                    <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                  </div>
                 </div>
               );
             })}
