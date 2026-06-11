@@ -242,6 +242,21 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [searchQuery, setSearchQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingPreview(null);
+      return;
+    }
+    if (pendingFile.type.startsWith("image/") || pendingFile.type.startsWith("video/")) {
+      const url = URL.createObjectURL(pendingFile);
+      setPendingPreview(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPendingPreview(null);
+  }, [pendingFile]);
 
   const copyPhone = useCallback(async () => {
     try {
