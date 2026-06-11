@@ -22,6 +22,7 @@ import {
 import type { Chat, Message } from "../types";
 import { changeState, fetchChat, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
+import { supabase } from "@/integrations/supabase/client";
 import QuickReplies from "./QuickReplies";
 
 function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
@@ -425,24 +426,36 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setUploadingImage(true);
     setError("");
     try {
-      const base64: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const raw = (reader.result as string) || "";
-          const idx = raw.indexOf(",");
-          const b64 = (idx >= 0 ? raw.slice(idx + 1) : raw).replace(/\s/g, "");
-          resolve(b64);
-        };
-        reader.onerror = () => reject(new Error("Error al leer el archivo"));
-        reader.readAsDataURL(file);
-      });
       const mime = file.type || "application/octet-stream";
       const extFromMime =
         mime.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "bin";
       const hasExt = /\.[A-Za-z0-9]{2,5}$/.test(file.name || "");
-      const fileName = hasExt
-        ? file.name
-        : `${(file.name || "archivo").replace(/[^\w.-]+/g, "_") || `archivo-${Date.now()}`}.${extFromMime}`;
+      const safeName = (file.name || "archivo").replace(/[^\w.-]+/g, "_");
+      const fileName = hasExt ? safeName : `${safeName || `archivo-${Date.now()}`}.${extFromMime}`;
+
+      // 1) Sube el archivo a Lovable Cloud Storage (bucket privado crm-media)
+      const objectPath = `${chat.contactId}/${Date.now()}-${crypto.randomUUID()}-${fileName}`;
+      const { error: upErr } = await supabase.storage
+        .from("crm-media")
+        .upload(objectPath, file, { contentType: mime, upsert: false });
+      if (upErr) throw new Error(`Storage upload: ${upErr.message}`);
+
+      // 2) Genera una URL firmada (válida 1h) para que GHL la pueda descargar
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("crm-media")
+        .createSignedUrl(objectPath, 60 * 60);
+      if (signErr || !signed?.signedUrl) throw new Error(`Signed URL: ${signErr?.message || "unknown"}`);
+      const mediaUrl = signed.signedUrl;
+
+      const mediaType = mime.startsWith("image/")
+        ? "image"
+        : mime.startsWith("video/")
+          ? "video"
+          : mime.startsWith("audio/")
+            ? "audio"
+            : "file";
+
+      // 3) Notifica a n8n con la URL pública firmada
       const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
         method: "POST",
         headers: {
@@ -453,7 +466,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           contactId: chat.contactId,
           fileName,
           mimeType: mime,
-          base64,
+          mediaUrl,
+          mediaType,
           userName,
         }),
       });
@@ -462,11 +476,11 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         status: response.status,
         fileName,
         mimeType: mime,
-        base64Length: base64.length,
+        mediaUrl,
         body: responseText.slice(0, 500),
       });
       if (!response.ok) {
-        throw new Error(`Error al subir el archivo (${response.status}) ${responseText.slice(0, 120)}`);
+        throw new Error(`Error al enviar a n8n (${response.status}) ${responseText.slice(0, 160)}`);
       }
       const updated = await fetchChat(chat.contactId);
       setMessages(updated);
@@ -479,6 +493,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       setUploadingImage(false);
     }
   }
+
 
   function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     addPendingFiles(event.target.files);
