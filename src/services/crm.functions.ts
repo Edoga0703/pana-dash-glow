@@ -12,7 +12,7 @@ const sendInput = z.object({
 });
 const stateInput = z.object({
   contactId: z.string().min(1),
-  state: z.enum(["bot", "humano", "pausado"]),
+  state: z.enum(["bot", "humano", "pausado", "pin", "unpin", "archive", "unarchive"]),
   userName: z.string().trim().min(1).max(120),
 });
 
