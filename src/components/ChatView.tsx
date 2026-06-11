@@ -772,7 +772,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             style={{ minHeight: "44px", maxHeight: "160px" }}
           />
           <button
-            disabled={(!text.trim() && !pendingFile) || sending || uploadingImage}
+            disabled={(!text.trim() && pendingFiles.length === 0) || sending || uploadingImage}
             onClick={handleSend}
             title="Enviar mensaje"
             className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600"
