@@ -44,6 +44,15 @@ export interface SendMessagePayload {
   userName: string;
 }
 
+export interface SendMediaPayload {
+  contactId: string;
+  fileName: string;
+  mimeType: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video' | 'audio' | 'file';
+  userName: string;
+}
+
 export interface ChangeStatePayload {
   contactId: string;
   state: 'bot' | 'humano' | 'pausado' | 'pin' | 'unpin' | 'archive' | 'unarchive';
