@@ -12,7 +12,10 @@
       "name": "Webhook - Media In",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [200, 300],
+      "position": [
+        200,
+        300
+      ],
       "webhookId": "pana-crm-media-v1"
     },
     {
@@ -23,14 +26,26 @@
       "name": "Validar",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 300]
+      "position": [
+        420,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "version": 2 },
+          "options": {
+            "version": 2
+          },
           "conditions": [
-            { "leftValue": "={{$json.ok}}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
           ]
         }
       },
@@ -38,7 +53,10 @@
       "name": "¿Válido?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [640, 300]
+      "position": [
+        640,
+        300
+      ]
     },
     {
       "parameters": {
@@ -47,21 +65,39 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{$env.GHL_TOKEN}}" },
-            { "name": "Version", "value": "2021-04-15" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.GHL_TOKEN}}"
+            },
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "json",
         "jsonBody": "={\n  \"type\": \"WhatsApp\",\n  \"contactId\": \"{{$json.contactId}}\",\n  \"attachments\": [\"{{$json.mediaUrl}}\"]\n}",
-        "options": { "response": { "response": { "responseFormat": "json" } } }
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "id": "ghl-send",
       "name": "GHL - Enviar Mensaje con Media",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [860, 220]
+      "position": [
+        860,
+        220
+      ]
     },
     {
       "parameters": {
@@ -75,7 +111,10 @@
       "name": "DB - Registrar Media",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [1080, 220]
+      "position": [
+        1080,
+        220
+      ]
     },
     {
       "parameters": {
@@ -86,7 +125,10 @@
       "name": "Responder OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1300, 220]
+      "position": [
+        1300,
+        220
+      ]
     },
     {
       "parameters": {
@@ -98,20 +140,84 @@
       "name": "Responder Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [860, 420]
+      "position": [
+        860,
+        420
+      ]
     }
   ],
   "connections": {
-    "Webhook - Media In": { "main": [[{ "node": "Validar", "type": "main", "index": 0 }]] },
-    "Validar":            { "main": [[{ "node": "¿Válido?", "type": "main", "index": 0 }]] },
-    "¿Válido?": {
+    "Webhook - Media In": {
       "main": [
-        [{ "node": "GHL - Enviar Mensaje con Media", "type": "main", "index": 0 }],
-        [{ "node": "Responder Error",                 "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validar",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "GHL - Enviar Mensaje con Media": { "main": [[{ "node": "DB - Registrar Media", "type": "main", "index": 0 }]] },
-    "DB - Registrar Media":           { "main": [[{ "node": "Responder OK",          "type": "main", "index": 0 }]] }
+    "Validar": {
+      "main": [
+        [
+          {
+            "node": "¿Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Válido?": {
+      "main": [
+        [
+          {
+            "node": "GHL - Enviar Mensaje con Media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL - Enviar Mensaje con Media": {
+      "main": [
+        [
+          {
+            "node": "DB - Registrar Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Registrar Media": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "pana-crm-media-v1"
+  },
+  "versionId": "",
+  "active": false,
+  "tags": []
 }
