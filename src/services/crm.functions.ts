@@ -237,7 +237,7 @@ export const postMedia = createServerFn({ method: "POST" })
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
-      message: " ", // Twilio requiere body no vacío; espacio simple en vez de zero-width
+      message: data.caption && data.caption.length > 0 ? data.caption : " ",
       attachments: uploaded,
     };
     if (providerId) payload.conversationProviderId = providerId;
