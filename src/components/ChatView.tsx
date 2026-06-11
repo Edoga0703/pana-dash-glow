@@ -173,19 +173,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-register-v1`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
-        },
-        body: JSON.stringify({
-          contactId: chat.contactId,
-          name: nombre.trim(),
-        }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Error al registrar");
+      await registerContact({ contactId: chat.contactId, name: nombre.trim() });
       onSuccess(nombre.trim());
       onClose();
     } catch (reason: unknown) {
