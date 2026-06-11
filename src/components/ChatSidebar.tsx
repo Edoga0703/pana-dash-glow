@@ -106,6 +106,27 @@ export default function ChatSidebar({
   const [showModeMenu, setShowModeMenu] = useState(false);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const cacheRef = useRef<Map<string, Message[]>>(new Map());
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; chat: Chat } | null>(null);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [ctxMenu]);
+
+  async function handleChangeState(chat: Chat, state: "bot" | "humano" | "pausado" | "pin" | "unpin" | "archive" | "unarchive") {
+    try {
+      await changeState({ contactId: chat.contactId, state, userName: "Administrador" });
+      onRefresh?.();
+    } catch {}
+  }
 
   const q = search.trim();
   const isSearching = q.length >= 1;
