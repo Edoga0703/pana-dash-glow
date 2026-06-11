@@ -396,7 +396,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       }
       setPendingFiles(remaining);
       if (message) {
-        await sendMessage({ contactId, text: message, userName });
+        await sendMessage({ contactId, phone: chat.phone, name: chat.name, text: message, userName });
       }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
