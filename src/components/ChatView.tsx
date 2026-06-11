@@ -449,31 +449,31 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   }
 
   function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) setPendingFile(file);
+    addPendingFiles(event.target.files);
     event.target.value = "";
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const items = e.clipboardData?.items;
     if (!items) return;
+    const files: File[] = [];
     for (const item of Array.from(items)) {
       if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          setPendingFile(file);
-          return;
-        }
+        const f = item.getAsFile();
+        if (f) files.push(f);
       }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addPendingFiles(files);
     }
   }
 
   function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
       e.preventDefault();
-      setPendingFile(file);
+      addPendingFiles(files);
     }
   }
 
