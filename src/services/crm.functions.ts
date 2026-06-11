@@ -71,8 +71,8 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonVal
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const GHL_CONVERSATIONS_VERSION = "2021-07-28";
+const GHL_MESSAGE_SEND_VERSION = "v3";
 const GHL_UPLOAD_VERSION = "v3";
-const SILENT_MEDIA_CAPTION = " ";
 const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
 
 function ghlConfig() {
@@ -214,7 +214,9 @@ async function uploadAttachmentUrlsToGhl(
   for (const file of files) {
     const downloaded = await fetch(file.url);
     if (!downloaded.ok) throw new Error(`No se pudo descargar el adjunto (${downloaded.status})`);
-    const blob = await downloaded.blob();
+    const blob = new Blob([await downloaded.arrayBuffer()], {
+      type: file.mimeType || downloaded.headers.get("content-type") || "application/octet-stream",
+    });
     form.append("fileAttachment", blob, file.fileName || "archivo");
   }
 
@@ -225,7 +227,8 @@ async function uploadAttachmentUrlsToGhl(
   });
   const body = await parseGhlResponse(res);
   const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
-  return uploaded.length ? uploaded : files.map((file) => file.url);
+  if (!uploaded.length) throw new Error("GHL no devolvió una URL para el adjunto subido");
+  return uploaded;
 }
 
 async function resolveConversationId(contactId: string): Promise<string | null> {
