@@ -39,15 +39,56 @@ function notify(title: string, body: string) {
 }
 
 
+const SIDEBAR_MIN = 280;
+const SIDEBAR_MAX = 560;
+const SIDEBAR_DEFAULT = 360;
+
 export default function Dashboard() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT;
+    const stored = Number(window.localStorage.getItem("crm:sidebarWidth"));
+    return stored >= SIDEBAR_MIN && stored <= SIDEBAR_MAX ? stored : SIDEBAR_DEFAULT;
+  });
+  const [resizing, setResizing] = useState(false);
   const prevUnreadRef = useRef<Map<string, number>>(new Map());
   const firstLoadRef = useRef(true);
   const selectedIdRef = useRef<string | null>(null);
+
+  // Drag handle del separador
+  useEffect(() => {
+    if (!resizing) return;
+    function onMove(e: MouseEvent) {
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+      setSidebarWidth(w);
+    }
+    function onUp() {
+      setResizing(false);
+      try {
+        window.localStorage.setItem("crm:sidebarWidth", String(sidebarWidth));
+      } catch {}
+    }
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizing, sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("crm:sidebarWidth", String(sidebarWidth));
+    } catch {}
+  }, [sidebarWidth]);
 
   useEffect(() => {
     selectedIdRef.current = selected?.contactId ?? null;
@@ -131,8 +172,11 @@ export default function Dashboard() {
 
   return (
     <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
-      <div className="grid h-full min-h-0 md:grid-cols-[360px_minmax(0,1fr)]">
-        <div className={`${selected ? "hidden md:block" : "block"} min-h-0`}>
+      <div className="flex h-full min-h-0">
+        <div
+          className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0 md:!w-[var(--sidebar-w)]`}
+          style={{ ["--sidebar-w" as never]: `${sidebarWidth}px` }}
+        >
           <ChatSidebar
             chats={chats}
             selectedId={selected?.contactId || null}
@@ -142,8 +186,19 @@ export default function Dashboard() {
           />
         </div>
 
+        {/* Separador arrastrable (solo en desktop) */}
+        <div
+          onMouseDown={() => setResizing(true)}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+          title="Arrastra para ajustar · doble clic para restaurar"
+          className={`hidden md:block w-1 shrink-0 cursor-col-resize bg-white/5 hover:bg-emerald-400/40 transition-colors ${
+            resizing ? "bg-emerald-400/60" : ""
+          }`}
+        />
 
-        <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
+
+
+        <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-1 flex-col`}>
           {selected ? (
             <>
               <button
