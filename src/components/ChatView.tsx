@@ -466,10 +466,11 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     try {
       const contactId = chat.contactId;
       const remaining: File[] = [];
+      const hasFiles = pendingFiles.length > 0;
       for (let i = 0; i < pendingFiles.length; i++) {
         const f = pendingFiles[i];
         try {
-          await uploadFile(f);
+          await uploadFile(f, i === 0 ? message : undefined);
         } catch (err) {
           // Conserva los archivos que aún no se subieron para reintentar
           remaining.push(...pendingFiles.slice(i));
@@ -477,7 +478,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         }
       }
       setPendingFiles(remaining);
-      if (message) {
+      if (message && !hasFiles) {
         await sendMessage({ contactId, phone: chat.phone, name: chat.name, text: message, userName });
       }
       const updated = await fetchChat(contactId);
