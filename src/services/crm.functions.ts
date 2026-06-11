@@ -139,11 +139,17 @@ function collectHttpUrls(value: unknown, urls: string[] = []): string[] {
   return [...new Set(urls)];
 }
 
-async function uploadAttachmentUrlsToGhl(contactId: string, urls: string[]): Promise<string[]> {
+async function uploadAttachmentUrlsToGhl(
+  conversationId: string,
+  urls: string[],
+): Promise<string[]> {
   const { locationId } = ghlConfig();
   const form = new FormData();
   form.append("locationId", locationId);
-  form.append("contactId", contactId);
+  // IMPORTANT: usar conversationId (no contactId) para que GHL genere URLs
+  // scoped a la conversación (.../conversations/{convId}/file.png) que Twilio
+  // sí puede descargar. Las URLs scoped a "contact" no funcionan en WhatsApp.
+  form.append("conversationId", conversationId);
   urls.forEach((url) => form.append("attachmentUrls[]", url));
 
   const res = await fetch(`${GHL_BASE}/conversations/messages/upload`, {
@@ -154,6 +160,18 @@ async function uploadAttachmentUrlsToGhl(contactId: string, urls: string[]): Pro
   const body = await parseGhlResponse(res);
   const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
   return uploaded.length ? uploaded : urls;
+}
+
+async function resolveConversationId(contactId: string): Promise<string | null> {
+  const { locationId } = ghlConfig();
+  const res = await ghlFetch(
+    `/conversations/search?locationId=${encodeURIComponent(locationId)}&contactId=${encodeURIComponent(contactId)}`,
+    {},
+    GHL_CONVERSATIONS_VERSION,
+  ).catch(() => null);
+  const body = asRecord(res);
+  const list = Array.isArray(body.conversations) ? body.conversations : [];
+  return firstString(asRecord(list[0]).id);
 }
 
 async function resolveContactId(opts: {
