@@ -196,7 +196,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-[#181d25] p-5">
+      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-[#181d25] p-5 text-center">
         <h3 className="mb-3 text-sm font-semibold text-white">
           {chat.name && chat.name !== "Sin nombre" ? "Editar contacto" : "Registrar contacto"}
         </h3>
@@ -204,18 +204,20 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Nombre del cliente"
-          className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
+          className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white text-center outline-none placeholder:text-slate-500 focus:border-emerald-400/40"
         />
-        <PhoneCopy phone={chat.phone} className="mb-3" />
+        <div className="mb-3 flex justify-center">
+          <PhoneCopy phone={chat.phone} />
+        </div>
         {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-center gap-2">
           <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={!nombre.trim() || saving}
-            className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400 disabled:opacity-50"
+            className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
           >
             {saving ? "Guardando..." : chat.name && chat.name !== "Sin nombre" ? "Guardar" : "Registrar"}
           </button>
