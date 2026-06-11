@@ -492,7 +492,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, caption?: string) {
     if (!file) return;
     setUploadingImage(true);
     setError("");
