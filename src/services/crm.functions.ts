@@ -132,6 +132,10 @@ function firstString(...values: unknown[]): string | null {
   return null;
 }
 
+function containsHttpUrl(value: string): boolean {
+  return /https?:\/\//i.test(value);
+}
+
 function toIsoDate(value: unknown): string {
   if (typeof value === "number") return new Date(value).toISOString();
   if (typeof value === "string" && value) return value;
@@ -346,7 +350,10 @@ export const postMedia = createServerFn({ method: "POST" })
     ]);
     const attachmentUrl = uploaded[0];
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    const captionText = data.caption?.trim() || `Archivo adjunto: ${data.fileName}`;
+    const captionText = data.caption?.trim() || ".";
+    if (containsHttpUrl(captionText)) {
+      throw new Error("El texto del mensaje no puede contener links de adjuntos");
+    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
