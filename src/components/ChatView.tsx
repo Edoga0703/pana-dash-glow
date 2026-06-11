@@ -24,6 +24,33 @@ import { changeState, fetchChat, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import QuickReplies from "./QuickReplies";
 
+function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(phone || "");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {}
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={copied ? "Copiado" : "Copiar número"}
+      className={`group inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -mx-1.5 text-xs text-slate-400 hover:text-emerald-300 hover:bg-white/5 transition-colors ${className}`}
+    >
+      <span className="text-slate-500">Tel:</span>
+      <span className="tabular-nums">{phone}</span>
+      {copied ? (
+        <Check size={11} className="text-emerald-400" />
+      ) : (
+        <Copy size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+      )}
+    </button>
+  );
+}
+
 interface ChatViewProps {
   chat: Chat;
   userName: string;
@@ -179,7 +206,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
           placeholder="Nombre del cliente"
           className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
         />
-        <p className="mb-3 text-xs text-slate-500">Tel: {chat.phone}</p>
+        <PhoneCopy phone={chat.phone} className="mb-3" />
         {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5">
