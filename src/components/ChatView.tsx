@@ -449,9 +449,16 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           userName,
         }),
       });
+      const responseText = await response.text().catch(() => "");
+      console.log("[uploadFile] response", {
+        status: response.status,
+        fileName,
+        mimeType: mime,
+        base64Length: base64.length,
+        body: responseText.slice(0, 500),
+      });
       if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        throw new Error(`Error al subir el archivo (${response.status}) ${detail.slice(0, 120)}`);
+        throw new Error(`Error al subir el archivo (${response.status}) ${responseText.slice(0, 120)}`);
       }
       const updated = await fetchChat(chat.contactId);
       setMessages(updated);
