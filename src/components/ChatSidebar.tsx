@@ -457,7 +457,42 @@ export default function ChatSidebar({
 
       {/* Tabs (ocultas durante búsqueda) */}
       {!isSearching && (
-        <div className="flex gap-1 overflow-x-auto px-2 py-2 border-b border-white/5 bg-[#0b141a] no-scrollbar">
+        <div
+          ref={(el) => {
+            if (!el || (el as any).__hScroll) return;
+            (el as any).__hScroll = true;
+            // Wheel vertical → scroll horizontal
+            el.addEventListener("wheel", (e: WheelEvent) => {
+              if (e.deltaY === 0) return;
+              e.preventDefault();
+              el.scrollLeft += e.deltaY;
+            }, { passive: false });
+            // Click + arrastrar
+            let down = false, startX = 0, startScroll = 0, moved = false;
+            el.addEventListener("mousedown", (e) => {
+              if ((e.target as HTMLElement).closest("button")) return;
+              down = true; moved = false;
+              startX = e.clientX; startScroll = el.scrollLeft;
+              el.style.cursor = "grabbing";
+            });
+            window.addEventListener("mousemove", (e) => {
+              if (!down) return;
+              const dx = e.clientX - startX;
+              if (Math.abs(dx) > 3) moved = true;
+              el.scrollLeft = startScroll - dx;
+            });
+            window.addEventListener("mouseup", () => {
+              down = false;
+              el.style.cursor = "";
+              if (moved) {
+                // Evitar que el siguiente click dispare un botón
+                const blocker = (ev: MouseEvent) => { ev.stopPropagation(); ev.preventDefault(); };
+                window.addEventListener("click", blocker, { capture: true, once: true });
+              }
+            });
+          }}
+          className="flex gap-1 overflow-x-auto px-2 py-2 border-b border-white/5 bg-[#0b141a] no-scrollbar cursor-grab select-none"
+        >
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = tab === id;
             const count = counts[id];
