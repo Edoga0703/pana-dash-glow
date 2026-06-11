@@ -248,13 +248,23 @@ export const postMedia = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    // Enviamos la URL original directamente. El endpoint /messages/upload
-    // genera URLs scoped a "contact" que Twilio no puede descargar.
+    // Subir el archivo al CDN de GHL usando conversationId para obtener una
+    // URL .../conversations/{convId}/... que Twilio sí puede descargar.
+    // Si no hay conversación previa, GHL la crea al enviar el primer mensaje;
+    // en ese caso enviamos la URL original como fallback.
+    const conversationId = await resolveConversationId(contactId);
+    let attachmentUrl = data.mediaUrl;
+    if (conversationId) {
+      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [data.mediaUrl]).catch(
+        () => [data.mediaUrl],
+      );
+      attachmentUrl = uploaded[0] || data.mediaUrl;
+    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
       message: data.caption && data.caption.length > 0 ? data.caption : " ",
-      attachments: [data.mediaUrl],
+      attachments: [attachmentUrl],
     };
     if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
