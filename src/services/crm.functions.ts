@@ -142,13 +142,16 @@ export const postMessage = createServerFn({ method: "POST" })
   .inputValidator(sendInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
+    const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
+    const payload: Record<string, unknown> = {
+      type: "WhatsApp",
+      contactId,
+      message: data.text,
+    };
+    if (providerId) payload.conversationProviderId = providerId;
     const result = await ghlFetch("/conversations/messages", {
       method: "POST",
-      body: JSON.stringify({
-        type: "WhatsApp",
-        contactId,
-        message: data.text,
-      }),
+      body: JSON.stringify(payload),
     });
     return { ok: true, contactId, messageId: result?.messageId || result?.id || null };
   });
@@ -157,13 +160,17 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
+    const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
+    const payload: Record<string, unknown> = {
+      type: "WhatsApp",
+      contactId,
+      message: data.fileName,
+      attachments: [data.mediaUrl],
+    };
+    if (providerId) payload.conversationProviderId = providerId;
     const result = await ghlFetch("/conversations/messages", {
       method: "POST",
-      body: JSON.stringify({
-        type: "WhatsApp",
-        contactId,
-        attachments: [data.mediaUrl],
-      }),
+      body: JSON.stringify(payload),
     });
     return { ok: true, contactId, messageId: result?.messageId || result?.id || null };
   });
