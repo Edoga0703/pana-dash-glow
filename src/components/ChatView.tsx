@@ -426,7 +426,19 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white">{nombreMostrado}</h2>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-            <span>{chat.phone}</span>
+            <button
+              type="button"
+              onClick={copyPhone}
+              title={copiedPhone ? "Copiado" : "Copiar número"}
+              className="group inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -mx-1.5 text-slate-400 hover:text-emerald-300 hover:bg-white/5 transition-colors"
+            >
+              <span className="tabular-nums">{chat.phone}</span>
+              {copiedPhone ? (
+                <Check size={11} className="text-emerald-400" />
+              ) : (
+                <Copy size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </button>
             <span>·</span>
             <span className={chat.status === "bot" ? "text-emerald-300" : "text-amber-200"}>
               {chat.status === "bot"
