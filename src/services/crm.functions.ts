@@ -52,13 +52,13 @@ export const getChat = createServerFn({ method: "GET" })
   );
 
 export const postMessage = createServerFn({ method: "POST" })
-  .validator(sendInput)
+  .inputValidator(sendInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-send-v1", { method: "POST", body: JSON.stringify(data) }),
   );
 
 export const postState = createServerFn({ method: "POST" })
-  .validator(stateInput)
+  .inputValidator(stateInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-state-v1", { method: "POST", body: JSON.stringify(data) }),
   );
