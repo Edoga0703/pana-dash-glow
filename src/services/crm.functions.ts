@@ -23,7 +23,7 @@ function config() {
   return { baseUrl: baseUrl.replace(/\/$/, ""), secret };
 }
 
-async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown> {
+async function crmRequest(path: string, init: RequestInit = {}): Promise<any> {
   const { baseUrl, secret } = config();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -34,7 +34,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown
     },
   });
   const text = await response.text();
-  let body: unknown;
+  let body: any;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
