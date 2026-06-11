@@ -242,6 +242,21 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [searchQuery, setSearchQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingFile) {
+      setPendingPreview(null);
+      return;
+    }
+    if (pendingFile.type.startsWith("image/") || pendingFile.type.startsWith("video/")) {
+      const url = URL.createObjectURL(pendingFile);
+      setPendingPreview(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPendingPreview(null);
+  }, [pendingFile]);
 
   const copyPhone = useCallback(async () => {
     try {
@@ -366,12 +381,18 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
 
   async function handleSend() {
     const message = text.trim();
-    if (!message || sending) return;
+    if ((!message && !pendingFile) || sending) return;
     setSending(true);
     setError("");
     try {
       const contactId = chat.contactId;
-      await sendMessage({ contactId, text: message, userName });
+      if (pendingFile) {
+        await uploadFile(pendingFile);
+        setPendingFile(null);
+      }
+      if (message) {
+        await sendMessage({ contactId, text: message, userName });
+      }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
       setText("");
@@ -419,9 +440,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
-  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (file) await uploadFile(file);
+    if (file) setPendingFile(file);
     event.target.value = "";
   }
 
@@ -433,7 +454,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         const file = item.getAsFile();
         if (file) {
           e.preventDefault();
-          void uploadFile(file);
+          setPendingFile(file);
           return;
         }
       }
@@ -444,7 +465,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       e.preventDefault();
-      void uploadFile(file);
+      setPendingFile(file);
     }
   }
 
@@ -663,6 +684,32 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             onClose={() => setShowQuickReplies(false)}
           />
         )}
+        {pendingFile && (
+          <div className="mx-auto mb-2 flex max-w-4xl items-center gap-3 rounded-md border border-white/10 bg-black/30 p-2">
+            {pendingPreview && pendingFile.type.startsWith("image/") ? (
+              <img src={pendingPreview} alt="" className="h-14 w-14 rounded object-cover" />
+            ) : pendingPreview && pendingFile.type.startsWith("video/") ? (
+              <video src={pendingPreview} className="h-14 w-14 rounded object-cover" />
+            ) : (
+              <div className="grid h-14 w-14 place-items-center rounded bg-white/5 text-slate-400">
+                <Paperclip size={18} />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs text-slate-200">{pendingFile.name || "Archivo"}</p>
+              <p className="text-[11px] text-slate-500">
+                {(pendingFile.size / 1024).toFixed(0)} KB · listo para enviar
+              </p>
+            </div>
+            <button
+              onClick={() => setPendingFile(null)}
+              title="Quitar adjunto"
+              className="grid size-7 place-items-center rounded-md text-slate-400 hover:bg-white/5 hover:text-rose-300"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="mx-auto flex max-w-4xl items-end gap-2">
           <button
             onClick={() => setShowQuickReplies((v) => !v)}
@@ -709,7 +756,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             style={{ minHeight: "44px", maxHeight: "160px" }}
           />
           <button
-            disabled={!text.trim() || sending}
+            disabled={(!text.trim() && !pendingFile) || sending || uploadingImage}
             onClick={handleSend}
             title="Enviar mensaje"
             className="grid size-11 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-slate-800 disabled:text-slate-600"
