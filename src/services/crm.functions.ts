@@ -343,12 +343,6 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    const conversationId = await resolveConversationId(contactId);
-    if (!conversationId) throw new Error("No se encontró la conversación para subir el adjunto");
-    const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [
-      { url: data.mediaUrl, fileName: data.fileName, mimeType: data.mimeType },
-    ]);
-    const attachmentUrl = uploaded[0];
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
     const captionText = data.caption?.trim() || ".";
     if (containsHttpUrl(captionText)) {
@@ -359,7 +353,7 @@ export const postMedia = createServerFn({ method: "POST" })
       contactId,
       userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
       message: captionText,
-      attachments: [attachmentUrl],
+      attachments: [data.mediaUrl],
     };
     if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
@@ -372,8 +366,9 @@ export const postMedia = createServerFn({ method: "POST" })
         GHL_MESSAGE_SEND_VERSION,
       ),
     );
-    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), attachmentUrl };
+    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), attachmentUrl: data.mediaUrl };
   });
+
 
 export const postState = createServerFn({ method: "POST" })
   .inputValidator(stateInput)
