@@ -74,6 +74,11 @@ const GHL_CONVERSATIONS_VERSION = "2021-07-28";
 const SILENT_MEDIA_CAPTION = " ";
 const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
 
+function mediaFallbackText(caption: string | undefined, url: string): string {
+  const text = caption?.trim();
+  return text ? `${text}\n${url}` : `Archivo adjunto:\n${url}`;
+}
+
 function ghlConfig() {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
@@ -345,6 +350,30 @@ export const postMedia = createServerFn({ method: "POST" })
       );
       attachmentUrl = uploaded[0] || data.mediaUrl;
     }
+    const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
+    if (!providerId && process.env.GHL_MEDIA_SEND_MODE !== "attachment") {
+      const fallbackResult = asRecord(
+        await ghlFetch(
+          "/conversations/messages",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              type: "WhatsApp",
+              contactId,
+              userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
+              message: mediaFallbackText(data.caption, attachmentUrl),
+            }),
+          },
+          GHL_CONVERSATIONS_VERSION,
+        ),
+      );
+      return {
+        ok: true,
+        contactId,
+        messageId: firstString(fallbackResult.messageId, fallbackResult.id),
+        fallback: "link",
+      };
+    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
@@ -352,6 +381,7 @@ export const postMedia = createServerFn({ method: "POST" })
       message: SILENT_MEDIA_CAPTION,
       attachments: [attachmentUrl],
     };
+    if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
       await ghlFetch(
         "/conversations/messages",
