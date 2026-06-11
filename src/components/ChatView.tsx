@@ -750,6 +750,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             ref={fileInputRef}
             type="file"
             accept="image/*,video/*,.pdf,.doc,.docx"
+            multiple
             className="hidden"
             onChange={handleImageUpload}
           />
