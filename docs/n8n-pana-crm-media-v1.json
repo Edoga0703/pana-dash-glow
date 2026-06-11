@@ -1,0 +1,175 @@
+{
+  "name": "Mini CRM API v1 - Media (pana-crm-media-v1)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-media-v1",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "wh-media-1",
+      "name": "Webhook - Media In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "pana-crm-media-v1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Validar auth + payload del CRM ===\nconst headers = $input.first().json.headers || {};\nconst body = $input.first().json.body || {};\n\nconst expected = $env.CRM_SECRET || '';\nconst got = headers['x-crm-secret'] || headers['X-CRM-SECRET'] || '';\n\nif (!expected || got !== expected) {\n  return [{ json: { ok: false, status: 403, error: 'Authorization data is wrong!' } }];\n}\n\nconst contactId = String(body.contactId || '').trim();\nconst fileName = String(body.fileName || '').trim().slice(0, 200);\nconst mimeType = String(body.mimeType || 'application/octet-stream').trim().slice(0, 120);\nconst base64   = String(body.base64 || '').replace(/\\s+/g, '');\nconst userName = String(body.userName || 'Administrador CRM').trim().slice(0, 120);\n\nconst validId   = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nconst validName = /^[\\w.\\-() ]{1,200}$/.test(fileName);\nconst validMime = /^[\\w.+\\-]+\\/[\\w.+\\-]+$/.test(mimeType);\nconst validB64  = base64.length > 0 && base64.length < 25 * 1024 * 1024; // ~18MB binario\n\nif (!validId || !validName || !validMime || !validB64) {\n  return [{ json: { ok: false, status: 400, error: 'Payload inválido', detalle: { validId, validName, validMime, validB64, base64Length: base64.length } } }];\n}\n\nreturn [{ json: { ok: true, contactId, fileName, mimeType, base64, userName } }];"
+      },
+      "id": "validate-1",
+      "name": "Validar Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "if-valid",
+      "name": "¿Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === base64 -> binario para multipart ===\nconst item = $input.first().json;\nconst buffer = Buffer.from(item.base64, 'base64');\nreturn [{\n  json: {\n    contactId: item.contactId,\n    fileName: item.fileName,\n    mimeType: item.mimeType,\n    userName: item.userName,\n    size: buffer.length\n  },\n  binary: {\n    data: {\n      data: buffer.toString('base64'),\n      mimeType: item.mimeType,\n      fileName: item.fileName\n    }\n  }\n}];"
+      },
+      "id": "to-binary",
+      "name": "Preparar Binario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://services.leadconnectorhq.com/medias/upload-file",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.GHL_TOKEN}}" },
+            { "name": "Version", "value": "2021-07-28" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "hosted", "value": "false" },
+            { "name": "fileName", "value": "={{$json.fileName}}" },
+            { "name": "locationId", "value": "={{$env.GHL_LOCATION_ID}}" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "ghl-upload",
+      "name": "GHL - Subir Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Combinar URL subida + datos previos ===\nconst up = $input.first().json;\nconst prev = $('Preparar Binario').first().json;\nconst mediaUrl = up.fileUrl || up.url || up.link;\nif (!mediaUrl) throw new Error('GHL no devolvió fileUrl: ' + JSON.stringify(up).slice(0,300));\n\nconst t = (prev.mimeType || '').split('/')[0];\nconst type = t === 'image' ? 'image' : t === 'video' ? 'video' : t === 'audio' ? 'audio' : 'file';\n\nreturn [{ json: { ...prev, mediaUrl, mediaType: type, ghlMediaId: up.id || null } }];"
+      },
+      "id": "merge-upload",
+      "name": "Componer Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.GHL_TOKEN}}" },
+            { "name": "Version", "value": "2021-04-15" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"type\": \"WhatsApp\",\n  \"contactId\": \"{{$json.contactId}}\",\n  \"attachments\": [\"{{$json.mediaUrl}}\"]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "ghl-send",
+      "name": "GHL - Enviar Mensaje con Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 220]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm_messages (contact_id, direction, body, media_url, media_type, user_name, ghl_message_id, created_at) VALUES ($1, 'outbound', '', $2, $3, $4, $5, NOW())",
+        "options": {
+          "queryReplacement": "={{$('Componer Mensaje').first().json.contactId}}, ={{$('Componer Mensaje').first().json.mediaUrl}}, ={{$('Componer Mensaje').first().json.mediaType}}, ={{$('Componer Mensaje').first().json.userName}}, ={{$json.messageId || $json.id || ''}}"
+        }
+      },
+      "id": "db-log",
+      "name": "DB - Registrar Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1740, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true, \"mediaUrl\": \"{{$('Componer Mensaje').first().json.mediaUrl}}\", \"messageId\": \"{{$json.messageId || $json.id || ''}}\" }"
+      },
+      "id": "resp-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1960, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": "={{$json.status || 400}}",
+        "responseBody": "={ \"ok\": false, \"error\": \"{{$json.error}}\" }"
+      },
+      "id": "resp-err",
+      "name": "Responder Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [860, 420]
+    }
+  ],
+  "connections": {
+    "Webhook - Media In": { "main": [[{ "node": "Validar Media", "type": "main", "index": 0 }]] },
+    "Validar Media":      { "main": [[{ "node": "¿Válido?", "type": "main", "index": 0 }]] },
+    "¿Válido?": {
+      "main": [
+        [{ "node": "Preparar Binario", "type": "main", "index": 0 }],
+        [{ "node": "Responder Error",  "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Binario":   { "main": [[{ "node": "GHL - Subir Media", "type": "main", "index": 0 }]] },
+    "GHL - Subir Media":  { "main": [[{ "node": "Componer Mensaje", "type": "main", "index": 0 }]] },
+    "Componer Mensaje":   { "main": [[{ "node": "GHL - Enviar Mensaje con Media", "type": "main", "index": 0 }]] },
+    "GHL - Enviar Mensaje con Media": { "main": [[{ "node": "DB - Registrar Media", "type": "main", "index": 0 }]] },
+    "DB - Registrar Media": { "main": [[{ "node": "Responder OK", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
