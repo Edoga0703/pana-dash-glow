@@ -535,6 +535,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         mimeType: mime,
         mediaUrl,
         mediaType,
+        caption,
         userName,
       });
       const updated = await fetchChat(chat.contactId);
