@@ -20,7 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
-import { changeState, fetchChat, sendMedia, sendMessage } from "../services/api";
+import { changeState, fetchChat, registerContact, sendMedia, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import { supabase } from "@/integrations/supabase/client";
 import QuickReplies from "./QuickReplies";
