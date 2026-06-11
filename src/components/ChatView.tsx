@@ -396,7 +396,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       }
       setPendingFiles(remaining);
       if (message) {
-        await sendMessage({ contactId, text: message, userName });
+        await sendMessage({ contactId, phone: chat.phone, name: chat.name, text: message, userName });
       }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
@@ -446,6 +446,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       // 3) Notifica a n8n desde el backend para enviar el secret correctamente
       await sendMedia({
         contactId: chat.contactId,
+        phone: chat.phone,
+        name: chat.name,
         fileName,
         mimeType: mime,
         mediaUrl,

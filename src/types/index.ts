@@ -39,13 +39,17 @@ export interface InboxResponse {
 }
 
 export interface SendMessagePayload {
-  contactId: string;
+  contactId?: string;
+  phone?: string;
+  name?: string;
   text: string;
   userName: string;
 }
 
 export interface SendMediaPayload {
-  contactId: string;
+  contactId?: string;
+  phone?: string;
+  name?: string;
   fileName: string;
   mimeType: string;
   mediaUrl: string;
