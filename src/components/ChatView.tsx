@@ -434,9 +434,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
-  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (file) await uploadFile(file);
+    if (file) setPendingFile(file);
     event.target.value = "";
   }
 
@@ -448,7 +448,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         const file = item.getAsFile();
         if (file) {
           e.preventDefault();
-          void uploadFile(file);
+          setPendingFile(file);
           return;
         }
       }
@@ -459,7 +459,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       e.preventDefault();
-      void uploadFile(file);
+      setPendingFile(file);
     }
   }
 
