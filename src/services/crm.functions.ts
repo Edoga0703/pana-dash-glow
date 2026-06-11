@@ -32,6 +32,8 @@ const registerInput = z.object({
   name: z.string().trim().min(1).max(200),
 });
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 function n8nConfig() {
   const baseUrl = process.env.N8N_BASE_URL || process.env.VITE_N8N_BASE_URL;
   const secret = process.env.CRM_SECRET || process.env.VITE_AUTH_HEADER_VALUE;
@@ -39,7 +41,7 @@ function n8nConfig() {
   return { baseUrl: baseUrl.replace(/\/$/, ""), secret };
 }
 
-async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown> {
+async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonValue> {
   const { baseUrl, secret } = n8nConfig();
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
@@ -50,7 +52,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<unknown
     },
   });
   const text = await response.text();
-  let body: unknown;
+  let body: JsonValue;
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
