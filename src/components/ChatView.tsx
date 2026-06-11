@@ -91,7 +91,9 @@ function MessageBubble({ message, highlight }: { message: Message; highlight?: s
           </div>
         )}
         {message.text && (
-          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+          <p className="whitespace-pre-wrap break-words text-sm leading-5">
+            {highlight ? highlightText(message.text, highlight) : message.text}
+          </p>
         )}
         {message.mediaUrl && (
           isAudioUrl(message.mediaUrl) ? (
