@@ -547,16 +547,27 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             {messages.map((message) => {
               const isActiveMatch =
                 trimmedQuery && matches[matchIndex]?.id === message.id;
+              const showUnreadDivider = message.id === firstUnreadId;
               return (
-                <div
-                  key={message.id}
-                  ref={(el) => {
-                    if (el) messageRefs.current.set(message.id, el);
-                    else messageRefs.current.delete(message.id);
-                  }}
-                  className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
-                >
-                  <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                <div key={message.id}>
+                  {showUnreadDivider && (
+                    <div className="my-2 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                        {initialUnread} {initialUnread === 1 ? "mensaje no leído" : "mensajes no leídos"}
+                      </span>
+                      <div className="h-px flex-1 bg-emerald-400/30" />
+                    </div>
+                  )}
+                  <div
+                    ref={(el) => {
+                      if (el) messageRefs.current.set(message.id, el);
+                      else messageRefs.current.delete(message.id);
+                    }}
+                    className={isActiveMatch ? "rounded-md ring-2 ring-emerald-400/60 transition-shadow" : ""}
+                  >
+                    <MessageBubble message={message} highlight={trimmedQuery || undefined} />
+                  </div>
                 </div>
               );
             })}
