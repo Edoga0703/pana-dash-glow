@@ -12,7 +12,7 @@ const sendInput = z.object({
 });
 const stateInput = z.object({
   contactId: z.string().min(1),
-  state: z.enum(["bot", "humano", "pausado"]),
+  state: z.enum(["bot", "humano", "pausado", "pin", "unpin", "archive", "unarchive"]),
   userName: z.string().trim().min(1).max(120),
 });
 
@@ -44,7 +44,7 @@ export const getInbox = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const getChat = createServerFn({ method: "GET" })
-  .validator(chatInput)
+  .inputValidator(chatInput)
   .handler(({ data }) =>
     crmRequest(
       `/webhook/pana-crm-chat-v1?contactId=${encodeURIComponent(data.contactId)}&page=${data.page}`,
@@ -52,13 +52,13 @@ export const getChat = createServerFn({ method: "GET" })
   );
 
 export const postMessage = createServerFn({ method: "POST" })
-  .validator(sendInput)
+  .inputValidator(sendInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-send-v1", { method: "POST", body: JSON.stringify(data) }),
   );
 
 export const postState = createServerFn({ method: "POST" })
-  .validator(stateInput)
+  .inputValidator(stateInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-state-v1", { method: "POST", body: JSON.stringify(data) }),
   );
