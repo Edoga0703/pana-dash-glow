@@ -511,10 +511,11 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         .upload(objectPath, file, { contentType: mime, upsert: false });
       if (upErr) throw new Error(`Storage upload: ${upErr.message}`);
 
-      // 2) Genera una URL firmada (válida 1h) para que GHL la pueda descargar
+      // 2) Genera una URL firmada de larga duración (1 año) para que GHL/Twilio
+      //    no la pierdan si el envío/reintento ocurre después de expirar.
       const { data: signed, error: signErr } = await supabase.storage
         .from("crm-media")
-        .createSignedUrl(objectPath, 60 * 60);
+        .createSignedUrl(objectPath, 60 * 60 * 24 * 365);
       if (signErr || !signed?.signedUrl) throw new Error(`Signed URL: ${signErr?.message || "unknown"}`);
       const mediaUrl = signed.signedUrl;
 
