@@ -1,0 +1,160 @@
+{
+  "name": "Pana CRM - Media v4 (GHL Direct API)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-media-v4",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "POST CRM Media",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [200, 300],
+      "webhookId": "pana-crm-media-v4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iOpDyoCiU4IAUuCr",
+          "name": "CRM Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar payload entrante del CRM\nconst body = $input.first().json.body || {};\n\nconst contactId = String(body.contactId || '').trim();\nconst base64    = String(body.base64 || '').trim();\nconst fileName  = String(body.fileName || 'file.bin').trim().slice(0, 200);\nconst mimeType  = String(body.mimeType || 'application/octet-stream').trim().slice(0, 120);\nconst caption   = String(body.caption || '').trim().slice(0, 1024);\nconst userName  = String(body.userName || 'Administrador CRM').trim().slice(0, 120);\n\nconst validId  = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nconst validB64 = base64.length > 16;\nif (!validId || !validB64) {\n  return [{ json: { ok: false, status: 400, error: 'Payload inválido', detalle: { validId, validB64 } } }];\n}\n\n// Sanitizar nombre de archivo\nconst safeFileName = fileName.replace(/[^A-Za-z0-9._-]/g, '_');\n\nreturn [{ json: { ok: true, contactId, base64, fileName: safeFileName, mimeType, caption, userName } }];"
+      },
+      "id": "val-1",
+      "name": "Validar Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Media Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Guardar archivo en VPS (/var/www/media) y construir URL pública\nconst fs = require('fs');\nconst path = require('path');\n\nconst item = $input.first().json;\nconst MEDIA_DIR = $env.MEDIA_DIR || '/var/www/media';\nconst PUBLIC_BASE = ($env.MEDIA_PUBLIC_BASE || 'https://tu-dominio.com/media').replace(/\\/$/, '');\n\nif (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });\n\nconst ts = Date.now();\nconst finalName = `${ts}_${item.fileName}`;\nconst fullPath = path.join(MEDIA_DIR, finalName);\n\nconst buf = Buffer.from(item.base64, 'base64');\nfs.writeFileSync(fullPath, buf);\n\nconst mediaUrl = `${PUBLIC_BASE}/${finalName}`;\n\nreturn [{ json: {\n  contactId: item.contactId,\n  mediaUrl,\n  mimeType: item.mimeType,\n  fileName: finalName,\n  caption: item.caption,\n  userName: item.userName\n} }];"
+      },
+      "id": "vps-1",
+      "name": "Guardar en VPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.GHL_TOKEN}}" },
+            { "name": "Version", "value": "2021-04-15" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'WhatsApp', contactId: $json.contactId, message: $json.caption || '.', attachments: [$json.mediaUrl] }) }}",
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "ghl-1",
+      "name": "GHL API - Send WhatsApp Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 220]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO crm_messages (contact_id, direction, body, media_url, media_type, user_name, ghl_message_id, created_at) VALUES ('{{$('Guardar en VPS').first().json.contactId}}', 'outbound', '{{($('Guardar en VPS').first().json.caption || '').replace(/'/g, '')}}', '{{$('Guardar en VPS').first().json.mediaUrl}}', '{{$('Guardar en VPS').first().json.mimeType}}', '{{$('Guardar en VPS').first().json.userName}}', '{{$json.messageId || $json.id || ''}}', NOW())",
+        "options": {}
+      },
+      "id": "db-1",
+      "name": "DB - Registrar Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 220],
+      "credentials": {
+        "postgres": {
+          "id": "jugYWhG4yG8FCO0l",
+          "name": "Postgres CRM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, mediaUrl: $('Guardar en VPS').first().json.mediaUrl, messageId: $json.messageId || $json.id || '' }) }}"
+      },
+      "id": "ok-1",
+      "name": "Responder Media OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1520, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": "={{$json.status || 400}}",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error || 'Error' }) }}"
+      },
+      "id": "err-1",
+      "name": "Error Media",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [860, 420]
+    }
+  ],
+  "connections": {
+    "POST CRM Media": {
+      "main": [[{ "node": "Validar Media", "type": "main", "index": 0 }]]
+    },
+    "Validar Media": {
+      "main": [[{ "node": "Media Valida?", "type": "main", "index": 0 }]]
+    },
+    "Media Valida?": {
+      "main": [
+        [{ "node": "Guardar en VPS", "type": "main", "index": 0 }],
+        [{ "node": "Error Media", "type": "main", "index": 0 }]
+      ]
+    },
+    "Guardar en VPS": {
+      "main": [[{ "node": "GHL API - Send WhatsApp Media", "type": "main", "index": 0 }]]
+    },
+    "GHL API - Send WhatsApp Media": {
+      "main": [[{ "node": "DB - Registrar Media", "type": "main", "index": 0 }]]
+    },
+    "DB - Registrar Media": {
+      "main": [[{ "node": "Responder Media OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "pana-crm-media-v4" },
+  "active": false,
+  "tags": []
+}
