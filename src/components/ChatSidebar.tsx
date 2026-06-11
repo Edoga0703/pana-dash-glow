@@ -377,16 +377,21 @@ export default function ChatSidebar({
           <h2 className="text-[15px] font-semibold text-white tracking-tight">CuentasTupana</h2>
           <span className="text-[10px] text-slate-500 uppercase tracking-wider">CRM</span>
         </div>
-        <div className="relative">
+        <div className="relative" ref={searchBoxRef}>
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
-            placeholder="Buscar nombre, teléfono o mensaje"
+            placeholder={
+              searchMode === "contactos"
+                ? "Buscar contacto por nombre o número"
+                : "Buscar en mensajes"
+            }
             value={search}
+            onFocus={() => setShowModeMenu(true)}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-9 py-2 bg-[#202c33] text-slate-100 text-[13px] rounded-full border border-transparent focus:outline-none focus:border-emerald-400/30 placeholder-slate-500"
           />
-          {search && (
+          {search ? (
             <button
               onClick={() => setSearch("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-500 hover:text-slate-200 hover:bg-white/5"
@@ -394,6 +399,58 @@ export default function ChatSidebar({
             >
               <X size={13} />
             </button>
+          ) : (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-wider text-emerald-400/70 pointer-events-none">
+              {searchMode === "contactos" ? "Contactos" : "Mensajes"}
+            </span>
+          )}
+
+          {showModeMenu && (
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 rounded-xl bg-[#1f2c33] border border-white/10 shadow-2xl overflow-hidden">
+              <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                Buscar por
+              </div>
+              <button
+                onClick={() => {
+                  setSearchMode("mensajes");
+                  setShowModeMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-[13px] hover:bg-white/5 ${
+                  searchMode === "mensajes" ? "text-emerald-300" : "text-slate-200"
+                }`}
+              >
+                <MessageCircle size={14} />
+                <div className="flex-1">
+                  <div className="font-medium">Mensajes</div>
+                  <div className="text-[11px] text-slate-500">
+                    Busca dentro del contenido de los chats
+                  </div>
+                </div>
+                {searchMode === "mensajes" && (
+                  <span className="size-1.5 rounded-full bg-emerald-400" />
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setSearchMode("contactos");
+                  setShowModeMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-[13px] hover:bg-white/5 ${
+                  searchMode === "contactos" ? "text-emerald-300" : "text-slate-200"
+                }`}
+              >
+                <UserRoundCheck size={14} />
+                <div className="flex-1">
+                  <div className="font-medium">Contactos</div>
+                  <div className="text-[11px] text-slate-500">
+                    Por nombre o número de teléfono
+                  </div>
+                </div>
+                {searchMode === "contactos" && (
+                  <span className="size-1.5 rounded-full bg-emerald-400" />
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
