@@ -313,12 +313,11 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   useEffect(() => {
     if (messages.length === 0) return;
     if (!didInitialScrollRef.current) {
-      const targetEl = firstUnreadId ? messageRefs.current.get(firstUnreadId) : null;
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: "auto", block: "start" });
-      } else {
-        bottomRef.current?.scrollIntoView({ behavior: "auto" });
-      }
+      // Siempre iniciar desde abajo, incluso si hay mensajes sin leer
+      // (el separador "no leídos" queda visible al hacer scroll hacia arriba)
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      });
       didInitialScrollRef.current = true;
     } else {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
