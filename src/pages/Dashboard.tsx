@@ -45,6 +45,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const prevUnreadRef = useRef<Map<string, number>>(new Map());
+  const firstLoadRef = useRef(true);
+  const selectedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedIdRef.current = selected?.contactId ?? null;
+  }, [selected]);
+
+  // Pedir permiso de notificaciones una vez
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, []);
 
   const loadInbox = useCallback(async (silent = false) => {
     if (!isCrmApiConfigured) {
@@ -56,6 +72,39 @@ export default function Dashboard() {
     try {
       const data = await fetchInbox();
       if (data.ok && Array.isArray(data.chats)) {
+        // Detectar mensajes nuevos comparando unreadCount por contacto
+        const prev = prevUnreadRef.current;
+        const next = new Map<string, number>();
+        let newArrivals: Chat[] = [];
+        for (const c of data.chats) {
+          const u = c.unreadCount || 0;
+          next.set(c.contactId, u);
+          const before = prev.get(c.contactId) ?? 0;
+          if (!firstLoadRef.current && u > before && c.contactId !== selectedIdRef.current) {
+            newArrivals.push(c);
+          }
+        }
+        prevUnreadRef.current = next;
+
+        if (newArrivals.length > 0) {
+          playBeep();
+          const first = newArrivals[0];
+          const more = newArrivals.length - 1;
+          notify(
+            more > 0 ? `${newArrivals.length} mensajes nuevos` : `Nuevo mensaje de ${first.name}`,
+            first.lastMessage?.slice(0, 140) || first.phone,
+          );
+          // Título parpadeante para reforzar la notificación
+          if (typeof document !== "undefined") {
+            const total = data.chats.reduce((s, c) => s + (c.unreadCount || 0), 0);
+            document.title = `(${total}) CuentasTupana CRM`;
+          }
+        } else if (typeof document !== "undefined") {
+          const total = data.chats.reduce((s, c) => s + (c.unreadCount || 0), 0);
+          document.title = total > 0 ? `(${total}) CuentasTupana CRM` : "CuentasTupana CRM";
+        }
+        firstLoadRef.current = false;
+
         setChats(data.chats);
         setSelected((current) =>
           current
@@ -81,7 +130,7 @@ export default function Dashboard() {
   }, [loadInbox]);
 
   return (
-    <main className="h-dvh overflow-hidden bg-[#0d1015] text-slate-100">
+    <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
       <div className="grid h-full min-h-0 md:grid-cols-[360px_minmax(0,1fr)]">
         <div className={`${selected ? "hidden md:block" : "block"} min-h-0`}>
           <ChatSidebar
@@ -89,8 +138,10 @@ export default function Dashboard() {
             selectedId={selected?.contactId || null}
             onSelect={setSelected}
             loading={loading}
+            onRefresh={() => loadInbox(true)}
           />
         </div>
+
 
         <div className={`${selected ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
           {selected ? (
