@@ -20,6 +20,7 @@ const mediaInput = z.object({
   mimeType: z.string().trim().min(1).max(120),
   mediaUrl: z.string().url(),
   mediaType: z.enum(["image", "video", "audio", "file"]),
+  caption: z.string().trim().max(4000).optional(),
   userName: z.string().trim().min(1).max(120),
 });
 const stateInput = z.object({
@@ -236,7 +237,7 @@ export const postMedia = createServerFn({ method: "POST" })
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
-      message: " ", // Twilio requiere body no vacío; espacio simple en vez de zero-width
+      message: data.caption && data.caption.length > 0 ? data.caption : " ",
       attachments: uploaded,
     };
     if (providerId) payload.conversationProviderId = providerId;

@@ -56,6 +56,7 @@ export interface SendMediaPayload {
   mimeType: string;
   mediaUrl: string;
   mediaType: 'image' | 'video' | 'audio' | 'file';
+  caption?: string;
   userName: string;
 }
 
