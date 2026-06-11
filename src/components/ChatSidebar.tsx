@@ -499,12 +499,12 @@ export default function ChatSidebar({
             {sorted.length > 0 && (
               <>
                 <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500">
-                  Chats
+                  {searchMode === "contactos" ? "Contactos" : "Chats"}
                 </div>
                 {sorted.map((c) => renderChatRow(c))}
               </>
             )}
-            {q.length >= 2 && (
+            {searchMode === "mensajes" && q.length >= 2 && (
               <>
                 <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 flex items-center justify-between">
                   <span>Mensajes</span>
@@ -519,7 +519,12 @@ export default function ChatSidebar({
                 )}
               </>
             )}
-            {sorted.length === 0 && q.length < 2 && (
+            {sorted.length === 0 && searchMode === "contactos" && (
+              <div className="p-6 text-center text-slate-600 text-sm">
+                Sin contactos que coincidan
+              </div>
+            )}
+            {sorted.length === 0 && searchMode === "mensajes" && q.length < 2 && (
               <div className="p-6 text-center text-slate-600 text-sm">
                 Escribe 2 o más letras para buscar en mensajes
               </div>
