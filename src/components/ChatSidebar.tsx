@@ -608,6 +608,57 @@ export default function ChatSidebar({
           sorted.map((c) => renderChatRow(c))
         )}
       </div>
+
+      {ctxMenu && (
+        <div
+          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+          className="fixed z-50 w-56 rounded-xl bg-[#1f2c33] border border-white/10 shadow-2xl overflow-hidden py-1 text-[13px]"
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div className="px-3 py-2 border-b border-white/5 truncate text-[12px] text-slate-400">
+            {ctxMenu.chat.name}
+          </div>
+          {ctxMenu.chat.status !== "humano" ? (
+            <button
+              onClick={() => { handleChangeState(ctxMenu.chat, "humano"); setCtxMenu(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-slate-200 hover:bg-white/5"
+            >
+              <UserRoundCheck size={14} className="text-amber-400" /> Tomar chat
+            </button>
+          ) : (
+            <button
+              onClick={() => { handleChangeState(ctxMenu.chat, "bot"); setCtxMenu(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-slate-200 hover:bg-white/5"
+            >
+              <Bot size={14} className="text-emerald-400" /> Enviar al bot
+            </button>
+          )}
+          {ctxMenu.chat.status !== "pausado" && (
+            <button
+              onClick={() => { handleChangeState(ctxMenu.chat, "pausado"); setCtxMenu(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-slate-200 hover:bg-white/5"
+            >
+              <CircleDot size={14} className="text-rose-400" /> Pausar
+            </button>
+          )}
+          <div className="my-1 border-t border-white/5" />
+          <button
+            onClick={() => { handleChangeState(ctxMenu.chat, ctxMenu.chat.pinned ? "unpin" : "pin"); setCtxMenu(null); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-slate-200 hover:bg-white/5"
+          >
+            {ctxMenu.chat.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            {ctxMenu.chat.pinned ? "Desfijar" : "Fijar"}
+          </button>
+          <button
+            onClick={() => { handleChangeState(ctxMenu.chat, ctxMenu.chat.archived ? "unarchive" : "archive"); setCtxMenu(null); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-slate-200 hover:bg-white/5"
+          >
+            {ctxMenu.chat.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            {ctxMenu.chat.archived ? "Desarchivar" : "Archivar"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
