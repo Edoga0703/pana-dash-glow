@@ -247,11 +247,10 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    // Subir el archivo al CDN de GHL usando conversationId para obtener una
-    // URL .../conversations/{convId}/... que Twilio sí puede descargar.
-    // Si no hay conversación previa, GHL la crea al enviar el primer mensaje;
-    // en ese caso enviamos la URL original como fallback.
+    // NO enviamos conversationProviderId para mensajes con media: el provider
+    // de Marketplace (meta.marketplace.appId) entrega el caption pero pierde
+    // la imagen en WhatsApp. Sin providerId, GHL usa el canal nativo de
+    // WhatsApp que sí entrega el attachment correctamente.
     const conversationId = await resolveConversationId(contactId);
     let attachmentUrl = data.mediaUrl;
     if (conversationId) {
@@ -266,7 +265,6 @@ export const postMedia = createServerFn({ method: "POST" })
       message: data.caption && data.caption.length > 0 ? data.caption : " ",
       attachments: [attachmentUrl],
     };
-    if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
       await ghlFetch(
         "/conversations/messages",
