@@ -288,6 +288,13 @@ export default function ChatSidebar({
       <button
         key={chat.contactId + (opts?.matchedMessage?.id ?? "")}
         onClick={() => onSelect(chat)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          const MENU_W = 220, MENU_H = 260;
+          const x = Math.min(e.clientX, window.innerWidth - MENU_W - 8);
+          const y = Math.min(e.clientY, window.innerHeight - MENU_H - 8);
+          setCtxMenu({ x, y, chat });
+        }}
         className={`group relative w-full text-left px-3 py-3 transition-colors flex items-start gap-3 ${
           selected
             ? "bg-[#2a3942]"
