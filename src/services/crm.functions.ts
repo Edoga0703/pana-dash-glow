@@ -10,6 +10,14 @@ const sendInput = z.object({
   text: z.string().trim().min(1).max(4000),
   userName: z.string().trim().min(1).max(120),
 });
+const mediaInput = z.object({
+  contactId: z.string().min(1),
+  fileName: z.string().trim().min(1).max(200),
+  mimeType: z.string().trim().min(1).max(120),
+  mediaUrl: z.string().url(),
+  mediaType: z.enum(["image", "video", "audio", "file"]),
+  userName: z.string().trim().min(1).max(120),
+});
 const stateInput = z.object({
   contactId: z.string().min(1),
   state: z.enum(["bot", "humano", "pausado", "pin", "unpin", "archive", "unarchive"]),
@@ -66,6 +74,12 @@ export const postMessage = createServerFn({ method: "POST" })
   .inputValidator(sendInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-send-v1", { method: "POST", body: JSON.stringify(data) }),
+  );
+
+export const postMedia = createServerFn({ method: "POST" })
+  .inputValidator(mediaInput)
+  .handler(({ data }) =>
+    crmRequest("/webhook/pana-crm-media-v1", { method: "POST", body: JSON.stringify(data) }),
   );
 
 export const postState = createServerFn({ method: "POST" })
