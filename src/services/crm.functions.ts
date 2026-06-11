@@ -34,8 +34,13 @@ async function crmRequest(path: string, init: RequestInit = {}) {
     },
   });
   const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(body?.error || `CRM error ${response.status}`);
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || `CRM error ${response.status}` };
+  }
+  if (!response.ok) throw new Error(String(body?.error || `CRM error ${response.status}`));
   return body;
 }
 
