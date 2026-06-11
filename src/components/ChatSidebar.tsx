@@ -102,10 +102,23 @@ export default function ChatSidebar({
   const [tab, setTab] = useState<TabFilter>("todos");
   const [deepHits, setDeepHits] = useState<SearchHit[]>([]);
   const [deepSearching, setDeepSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState<"mensajes" | "contactos">("mensajes");
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const cacheRef = useRef<Map<string, Message[]>>(new Map());
 
   const q = search.trim();
   const isSearching = q.length >= 1;
+
+  // Cerrar menú al click fuera
+  useEffect(() => {
+    if (!showModeMenu) return;
+    function onClick(e: MouseEvent) {
+      if (!searchBoxRef.current?.contains(e.target as Node)) setShowModeMenu(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showModeMenu]);
 
   const counts = useMemo(() => {
     const active = chats.filter((c) => !c.archived);
@@ -120,7 +133,7 @@ export default function ChatSidebar({
 
   // Deep search en mensajes de TODAS las conversaciones (estilo WhatsApp)
   useEffect(() => {
-    if (!isSearching || q.length < 2) {
+    if (!isSearching || q.length < 2 || searchMode !== "mensajes") {
       setDeepHits([]);
       setDeepSearching(false);
       return;
@@ -131,7 +144,6 @@ export default function ChatSidebar({
 
     const targets = chats.filter((c) => !c.archived || tab === "archivados");
 
-    // Lanzar fetch con concurrencia limitada
     const CONCURRENCY = 5;
     let index = 0;
     const cache = cacheRef.current;
@@ -158,7 +170,6 @@ export default function ChatSidebar({
       const hits: SearchHit[] = [];
       for (const c of targets) {
         const msgs = cache.get(c.contactId) || [];
-        // último mensaje (más reciente) que matchea
         let best: Message | null = null;
         for (let i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i].text && msgs[i].text.toLowerCase().includes(ql)) {
@@ -180,18 +191,29 @@ export default function ChatSidebar({
       cancelled = true;
       window.clearTimeout(debounce);
     };
-  }, [q, isSearching, chats, tab]);
+  }, [q, isSearching, chats, tab, searchMode]);
 
-  // Resultados rápidos: nombre / teléfono / último mensaje
+  function digitsOnly(s: string): string {
+    return (s || "").replace(/\D+/g, "");
+  }
+
   const quickFiltered = chats.filter((c) => {
-    const ql = q.toLowerCase();
-    const matchSearch =
-      !isSearching ||
-      c.name.toLowerCase().includes(ql) ||
-      (c.phone || "").toLowerCase().includes(ql) ||
-      (c.lastMessage || "").toLowerCase().includes(ql);
-    if (!matchSearch) return false;
-    if (isSearching) return true; // en búsqueda no aplicamos tabs
+    if (isSearching) {
+      const ql = q.toLowerCase();
+      if (searchMode === "contactos") {
+        const qd = digitsOnly(q);
+        const phoneD = digitsOnly(c.phone || "");
+        const nameMatch = c.name.toLowerCase().includes(ql);
+        const phoneMatch = qd.length > 0 && phoneD.includes(qd);
+        if (!nameMatch && !phoneMatch) return false;
+      } else {
+        const match =
+          c.name.toLowerCase().includes(ql) ||
+          (c.lastMessage || "").toLowerCase().includes(ql);
+        if (!match) return false;
+      }
+      return true;
+    }
     if (tab === "archivados") return c.archived;
     if (c.archived) return false;
     if (tab === "no_leidos") return (c.unreadCount || 0) > 0;
@@ -355,16 +377,21 @@ export default function ChatSidebar({
           <h2 className="text-[15px] font-semibold text-white tracking-tight">CuentasTupana</h2>
           <span className="text-[10px] text-slate-500 uppercase tracking-wider">CRM</span>
         </div>
-        <div className="relative">
+        <div className="relative" ref={searchBoxRef}>
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
-            placeholder="Buscar nombre, teléfono o mensaje"
+            placeholder={
+              searchMode === "contactos"
+                ? "Buscar contacto por nombre o número"
+                : "Buscar en mensajes"
+            }
             value={search}
+            onFocus={() => setShowModeMenu(true)}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-9 py-2 bg-[#202c33] text-slate-100 text-[13px] rounded-full border border-transparent focus:outline-none focus:border-emerald-400/30 placeholder-slate-500"
           />
-          {search && (
+          {search ? (
             <button
               onClick={() => setSearch("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-500 hover:text-slate-200 hover:bg-white/5"
@@ -372,6 +399,58 @@ export default function ChatSidebar({
             >
               <X size={13} />
             </button>
+          ) : (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-wider text-emerald-400/70 pointer-events-none">
+              {searchMode === "contactos" ? "Contactos" : "Mensajes"}
+            </span>
+          )}
+
+          {showModeMenu && (
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 rounded-xl bg-[#1f2c33] border border-white/10 shadow-2xl overflow-hidden">
+              <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                Buscar por
+              </div>
+              <button
+                onClick={() => {
+                  setSearchMode("mensajes");
+                  setShowModeMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-[13px] hover:bg-white/5 ${
+                  searchMode === "mensajes" ? "text-emerald-300" : "text-slate-200"
+                }`}
+              >
+                <MessageCircle size={14} />
+                <div className="flex-1">
+                  <div className="font-medium">Mensajes</div>
+                  <div className="text-[11px] text-slate-500">
+                    Busca dentro del contenido de los chats
+                  </div>
+                </div>
+                {searchMode === "mensajes" && (
+                  <span className="size-1.5 rounded-full bg-emerald-400" />
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setSearchMode("contactos");
+                  setShowModeMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-[13px] hover:bg-white/5 ${
+                  searchMode === "contactos" ? "text-emerald-300" : "text-slate-200"
+                }`}
+              >
+                <UserRoundCheck size={14} />
+                <div className="flex-1">
+                  <div className="font-medium">Contactos</div>
+                  <div className="text-[11px] text-slate-500">
+                    Por nombre o número de teléfono
+                  </div>
+                </div>
+                {searchMode === "contactos" && (
+                  <span className="size-1.5 rounded-full bg-emerald-400" />
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -420,12 +499,12 @@ export default function ChatSidebar({
             {sorted.length > 0 && (
               <>
                 <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500">
-                  Chats
+                  {searchMode === "contactos" ? "Contactos" : "Chats"}
                 </div>
                 {sorted.map((c) => renderChatRow(c))}
               </>
             )}
-            {q.length >= 2 && (
+            {searchMode === "mensajes" && q.length >= 2 && (
               <>
                 <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 flex items-center justify-between">
                   <span>Mensajes</span>
@@ -440,7 +519,12 @@ export default function ChatSidebar({
                 )}
               </>
             )}
-            {sorted.length === 0 && q.length < 2 && (
+            {sorted.length === 0 && searchMode === "contactos" && (
+              <div className="p-6 text-center text-slate-600 text-sm">
+                Sin contactos que coincidan
+              </div>
+            )}
+            {sorted.length === 0 && searchMode === "mensajes" && q.length < 2 && (
               <div className="p-6 text-center text-slate-600 text-sm">
                 Escribe 2 o más letras para buscar en mensajes
               </div>
