@@ -406,6 +406,17 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
+            onClick={() => setShowSearch((v) => !v)}
+            title="Buscar en este chat"
+            className={`grid size-9 place-items-center rounded-md border transition-colors ${
+              showSearch
+                ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-300"
+                : "border-white/10 text-slate-400 hover:bg-white/5 hover:text-emerald-300"
+            }`}
+          >
+            <Search size={15} />
+          </button>
+          <button
             onClick={() => setShowRegister(true)}
             title={isRegistered ? "Editar contacto" : "Registrar contacto"}
             className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
