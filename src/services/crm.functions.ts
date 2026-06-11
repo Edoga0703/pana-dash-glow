@@ -343,35 +343,12 @@ export const postMedia = createServerFn({ method: "POST" })
     const conversationId = await resolveConversationId(contactId);
     let attachmentUrl = data.mediaUrl;
     if (conversationId) {
-      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [data.mediaUrl]).catch(
-        () => [data.mediaUrl],
-      );
+      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [
+        { url: data.mediaUrl, fileName: data.fileName, mimeType: data.mimeType },
+      ]).catch(() => [data.mediaUrl]);
       attachmentUrl = uploaded[0] || data.mediaUrl;
     }
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    if (!providerId && process.env.GHL_MEDIA_SEND_MODE !== "attachment") {
-      const fallbackResult = asRecord(
-        await ghlFetch(
-          "/conversations/messages",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              type: "WhatsApp",
-              contactId,
-              userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-              message: mediaFallbackText(data.caption, attachmentUrl),
-            }),
-          },
-          GHL_CONVERSATIONS_VERSION,
-        ),
-      );
-      return {
-        ok: true,
-        contactId,
-        messageId: firstString(fallbackResult.messageId, fallbackResult.id),
-        fallback: "link",
-      };
-    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
