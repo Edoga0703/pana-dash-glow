@@ -179,7 +179,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
           placeholder="Nombre del cliente"
           className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
         />
-        <p className="mb-3 text-xs text-slate-500">Tel: {chat.phone}</p>
+        <PhoneCopy phone={chat.phone} className="mb-3" />
         {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5">
