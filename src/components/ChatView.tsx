@@ -208,10 +208,46 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [nombreMostrado, setNombreMostrado] = useState(chat.name);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const chatIdRef = useRef(chat.contactId);
+
+  const trimmedQuery = searchQuery.trim();
+  const matches = trimmedQuery
+    ? messages.filter((m) => m.text?.toLowerCase().includes(trimmedQuery.toLowerCase()))
+    : [];
+
+  useEffect(() => {
+    setMatchIndex(0);
+  }, [trimmedQuery, chat.contactId]);
+
+  useEffect(() => {
+    if (!showSearch || !trimmedQuery || matches.length === 0) return;
+    const safeIdx = Math.min(matchIndex, matches.length - 1);
+    const msg = matches[safeIdx];
+    const el = messageRefs.current.get(msg.id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [matchIndex, matches, showSearch, trimmedQuery]);
+
+  useEffect(() => {
+    if (showSearch) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else {
+      setSearchQuery("");
+    }
+  }, [showSearch]);
+
+  // Reset search al cambiar de chat
+  useEffect(() => {
+    setShowSearch(false);
+    setSearchQuery("");
+  }, [chat.contactId]);
 
   const isRegistered = !!(chat.name && chat.name !== "Sin nombre");
 
