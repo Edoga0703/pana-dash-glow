@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, MessageSquareText, RefreshCw, ServerOff } from "lucide-react";
 import type { Chat } from "../types";
 import { fetchInbox } from "../services/api";
@@ -7,6 +7,37 @@ import ChatSidebar from "../components/ChatSidebar";
 import ChatView from "../components/ChatView";
 
 const USER_NAME = "Administrador";
+
+// Beep corto generado in-memory (sin assets externos)
+function playBeep() {
+  try {
+    const AC = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    o.start();
+    o.stop(ctx.currentTime + 0.27);
+    o.onended = () => ctx.close();
+  } catch {}
+}
+
+function notify(title: string, body: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission === "granted") {
+    try {
+      new Notification(title, { body, silent: false, tag: "crm-msg" });
+    } catch {}
+  }
+}
+
 
 export default function Dashboard() {
   const [chats, setChats] = useState<Chat[]>([]);
