@@ -700,6 +700,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
                 handleSend();
               }
             }}
+            onPaste={handlePaste}
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
             rows={1}
             placeholder="Escribe una respuesta..."
             className="flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none overflow-y-auto placeholder:text-slate-600 focus:border-cyan-400/35"
