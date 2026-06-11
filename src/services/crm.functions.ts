@@ -60,10 +60,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonVal
   }
   if (!response.ok) {
     const details = asRecord(body);
-    const err =
-      typeof details.error === "string"
-        ? details.error
-        : `CRM error ${response.status}`;
+    const err = typeof details.error === "string" ? details.error : `CRM error ${response.status}`;
     throw new Error(err);
   }
   return body;
