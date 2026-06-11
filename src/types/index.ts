@@ -1,28 +1,36 @@
+// ══════════════════════════════════════════════════════════
+// TIPOS — CuentasTupana CRM v2
+// ══════════════════════════════════════════════════════════
+
 export interface Chat {
   contactId: string;
-  conversationId: string | null;
+  conversationId: string;
   name: string;
   phone: string;
   lastMessage: string;
   unreadCount: number;
-  status: "bot" | "humano" | "pausado";
+  status: 'bot' | 'humano' | 'pausado';
   botActive: boolean;
   humanOverride: boolean;
-  reason?: string | null;
-  lastMessageTs: string | null;
+  reason?: string;
+  lastMessageTs: string;
   updatedAt: string;
+  pinned?: boolean;
+  archived?: boolean;
+  pinnedAt?: string;
+  archivedAt?: string;
 }
 
 export interface Message {
   id: string;
-  role: "user" | "model" | "assistant";
+  role: 'user' | 'model' | 'assistant';
   text: string;
   mediaUrl?: string;
   createdAt: string;
   appId?: string;
-  senderType?: "bot" | "human" | "client";
+  senderType?: 'bot' | 'human' | 'client';
   ghlMessageId?: string;
-  isRead?: boolean;
+  isRead: boolean;
 }
 
 export interface InboxResponse {
@@ -34,13 +42,10 @@ export interface SendMessagePayload {
   contactId: string;
   text: string;
   userName: string;
-  mediaBase64?: string;
-  mediaMimeType?: string;
-  mediaName?: string;
 }
 
 export interface ChangeStatePayload {
   contactId: string;
-  state: "bot" | "humano" | "pausado";
+  state: 'bot' | 'humano' | 'pausado' | 'pin' | 'unpin' | 'archive' | 'unarchive';
   userName: string;
 }
