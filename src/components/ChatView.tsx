@@ -472,7 +472,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       setMessages(updated);
       onStateChanged?.();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
+      const msg = reason instanceof Error ? reason.message : "No se pudo enviar el archivo";
+      setError(msg);
+      throw reason instanceof Error ? reason : new Error(msg);
     } finally {
       setUploadingImage(false);
     }
