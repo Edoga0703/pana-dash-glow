@@ -419,10 +419,22 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     try {
       const base64: string = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onload = () => {
+          const raw = (reader.result as string) || "";
+          const idx = raw.indexOf(",");
+          const b64 = (idx >= 0 ? raw.slice(idx + 1) : raw).replace(/\s/g, "");
+          resolve(b64);
+        };
         reader.onerror = () => reject(new Error("Error al leer el archivo"));
         reader.readAsDataURL(file);
       });
+      const mime = file.type || "application/octet-stream";
+      const extFromMime =
+        mime.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "bin";
+      const hasExt = /\.[A-Za-z0-9]{2,5}$/.test(file.name || "");
+      const fileName = hasExt
+        ? file.name
+        : `${(file.name || "archivo").replace(/[^\w.-]+/g, "_") || `archivo-${Date.now()}`}.${extFromMime}`;
       const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
         method: "POST",
         headers: {
@@ -431,13 +443,16 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         },
         body: JSON.stringify({
           contactId: chat.contactId,
-          fileName: file.name || `pegado-${Date.now()}`,
-          mimeType: file.type,
+          fileName,
+          mimeType: mime,
           base64,
           userName,
         }),
       });
-      if (!response.ok) throw new Error("Error al subir el archivo");
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`Error al subir el archivo (${response.status}) ${detail.slice(0, 120)}`);
+      }
       const updated = await fetchChat(chat.contactId);
       setMessages(updated);
       onStateChanged?.();
