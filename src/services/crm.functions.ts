@@ -72,6 +72,7 @@ const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const GHL_CONVERSATIONS_VERSION = "2021-07-28";
 const SILENT_MEDIA_CAPTION = "\u200B";
+const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
 
 function ghlConfig() {
   const apiKey = process.env.GHL_API_KEY;
@@ -262,6 +263,7 @@ export const postMedia = createServerFn({ method: "POST" })
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
+      userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
       message: data.caption && data.caption.length > 0 ? data.caption : " ",
       attachments: [attachmentUrl],
     };
