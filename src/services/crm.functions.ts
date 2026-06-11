@@ -230,15 +230,13 @@ export const postMedia = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    // Subimos a GHL para garantizar URL accesible por Twilio
-    const uploaded = await uploadAttachmentUrlsToGhl(contactId, [data.mediaUrl]).catch(
-      () => [data.mediaUrl],
-    );
+    // Enviamos la URL original directamente. El endpoint /messages/upload
+    // genera URLs scoped a "contact" que Twilio no puede descargar.
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
       message: data.caption && data.caption.length > 0 ? data.caption : " ",
-      attachments: uploaded,
+      attachments: [data.mediaUrl],
     };
     if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
