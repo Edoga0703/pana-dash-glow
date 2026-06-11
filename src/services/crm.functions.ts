@@ -71,13 +71,9 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<JsonVal
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-07-28";
 const GHL_CONVERSATIONS_VERSION = "2021-07-28";
+const GHL_UPLOAD_VERSION = "v3";
 const SILENT_MEDIA_CAPTION = " ";
 const GHL_DEFAULT_USER_ID = "j4c6feEhVsykrHnHKDkO";
-
-function mediaFallbackText(caption: string | undefined, url: string): string {
-  const text = caption?.trim();
-  return text ? `${text}\n${url}` : `Archivo adjunto:\n${url}`;
-}
 
 function ghlConfig() {
   const apiKey = process.env.GHL_API_KEY;
@@ -209,25 +205,27 @@ function collectHttpUrls(value: unknown, urls: string[] = []): string[] {
 
 async function uploadAttachmentUrlsToGhl(
   conversationId: string,
-  urls: string[],
+  files: { url: string; fileName: string; mimeType: string }[],
 ): Promise<string[]> {
   const { locationId } = ghlConfig();
   const form = new FormData();
   form.append("locationId", locationId);
-  // IMPORTANT: usar conversationId (no contactId) para que GHL genere URLs
-  // scoped a la conversación (.../conversations/{convId}/file.png) que Twilio
-  // sí puede descargar. Las URLs scoped a "contact" no funcionan en WhatsApp.
   form.append("conversationId", conversationId);
-  urls.forEach((url) => form.append("attachmentUrls[]", url));
+  for (const file of files) {
+    const downloaded = await fetch(file.url);
+    if (!downloaded.ok) throw new Error(`No se pudo descargar el adjunto (${downloaded.status})`);
+    const blob = await downloaded.blob();
+    form.append("fileAttachment", blob, file.fileName || "archivo");
+  }
 
   const res = await fetch(`${GHL_BASE}/conversations/messages/upload`, {
     method: "POST",
-    headers: ghlHeaders(GHL_CONVERSATIONS_VERSION, false),
+    headers: ghlHeaders(GHL_UPLOAD_VERSION, false),
     body: form,
   });
   const body = await parseGhlResponse(res);
   const uploaded = collectHttpUrls(asRecord(body).uploadedFiles);
-  return uploaded.length ? uploaded : urls;
+  return uploaded.length ? uploaded : files.map((file) => file.url);
 }
 
 async function resolveConversationId(contactId: string): Promise<string | null> {
@@ -345,35 +343,12 @@ export const postMedia = createServerFn({ method: "POST" })
     const conversationId = await resolveConversationId(contactId);
     let attachmentUrl = data.mediaUrl;
     if (conversationId) {
-      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [data.mediaUrl]).catch(
-        () => [data.mediaUrl],
-      );
+      const uploaded = await uploadAttachmentUrlsToGhl(conversationId, [
+        { url: data.mediaUrl, fileName: data.fileName, mimeType: data.mimeType },
+      ]).catch(() => [data.mediaUrl]);
       attachmentUrl = uploaded[0] || data.mediaUrl;
     }
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    if (!providerId && process.env.GHL_MEDIA_SEND_MODE !== "attachment") {
-      const fallbackResult = asRecord(
-        await ghlFetch(
-          "/conversations/messages",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              type: "WhatsApp",
-              contactId,
-              userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-              message: mediaFallbackText(data.caption, attachmentUrl),
-            }),
-          },
-          GHL_CONVERSATIONS_VERSION,
-        ),
-      );
-      return {
-        ok: true,
-        contactId,
-        messageId: firstString(fallbackResult.messageId, fallbackResult.id),
-        fallback: "link",
-      };
-    }
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
