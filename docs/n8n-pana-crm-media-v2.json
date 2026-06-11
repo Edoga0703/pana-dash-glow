@@ -1,10 +1,10 @@
 {
-  "name": "Mini CRM API v1 - Media URL (pana-crm-media-v1)",
+  "name": "Mini CRM API v1 - Media URL (pana-crm-media-v2)",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "pana-crm-media-v1",
+        "path": "pana-crm-media-v2",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -16,7 +16,7 @@
         200,
         300
       ],
-      "webhookId": "pana-crm-media-v1"
+      "webhookId": "pana-crm-media-v2"
     },
     {
       "parameters": {
@@ -215,7 +215,7 @@
   },
   "pinData": {},
   "meta": {
-    "instanceId": "pana-crm-media-v1"
+    "instanceId": "pana-crm-media-v2"
   },
   "versionId": "",
   "active": false,
