@@ -20,8 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { Chat, Message } from "../types";
-import { changeState, fetchChat, sendMessage } from "../services/api";
-import { API_CONFIG } from "../config/api";
+import { changeState, fetchChat, sendMedia, sendMessage } from "../services/api";
 import { supabase } from "@/integrations/supabase/client";
 import QuickReplies from "./QuickReplies";
 
@@ -455,33 +454,15 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             ? "audio"
             : "file";
 
-      // 3) Notifica a n8n con la URL pública firmada
-      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
-        },
-        body: JSON.stringify({
-          contactId: chat.contactId,
-          fileName,
-          mimeType: mime,
-          mediaUrl,
-          mediaType,
-          userName,
-        }),
-      });
-      const responseText = await response.text().catch(() => "");
-      console.log("[uploadFile] response", {
-        status: response.status,
+      // 3) Notifica a n8n desde el backend para enviar el secret correctamente
+      await sendMedia({
+        contactId: chat.contactId,
         fileName,
         mimeType: mime,
         mediaUrl,
-        body: responseText.slice(0, 500),
+        mediaType,
+        userName,
       });
-      if (!response.ok) {
-        throw new Error(`Error al enviar a n8n (${response.status}) ${responseText.slice(0, 160)}`);
-      }
       const updated = await fetchChat(chat.contactId);
       setMessages(updated);
       onStateChanged?.();
