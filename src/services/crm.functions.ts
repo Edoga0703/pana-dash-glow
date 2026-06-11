@@ -248,10 +248,10 @@ export const postMedia = createServerFn({ method: "POST" })
   .inputValidator(mediaInput)
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
-    // NO enviamos conversationProviderId para mensajes con media: el provider
-    // de Marketplace (meta.marketplace.appId) entrega el caption pero pierde
-    // la imagen en WhatsApp. Sin providerId, GHL usa el canal nativo de
-    // WhatsApp que sí entrega el attachment correctamente.
+    // Media debe salir SIN texto/caption: cuando GHL recibe media+body en un
+    // solo payload lo enruta por marketplace y WhatsApp muestra “1 anexo
+    // enviado”/vacío. Los mensajes que sí entregan la imagen tienen body "" y
+    // userId nativo; si hay caption, lo mandamos luego como texto separado.
     const conversationId = await resolveConversationId(contactId);
     let attachmentUrl = data.mediaUrl;
     if (conversationId) {
@@ -264,7 +264,7 @@ export const postMedia = createServerFn({ method: "POST" })
       type: "WhatsApp",
       contactId,
       userId: process.env.GHL_USER_ID || GHL_DEFAULT_USER_ID,
-      message: data.caption && data.caption.length > 0 ? data.caption : " ",
+      message: "",
       attachments: [attachmentUrl],
     };
     const result = asRecord(
@@ -277,7 +277,22 @@ export const postMedia = createServerFn({ method: "POST" })
         GHL_CONVERSATIONS_VERSION,
       ),
     );
-    return { ok: true, contactId, messageId: firstString(result.messageId, result.id) };
+    const captionText = data.caption?.trim();
+    let captionMessageId: string | null = null;
+    if (captionText) {
+      const captionResult = asRecord(
+        await ghlFetch(
+          "/conversations/messages",
+          {
+            method: "POST",
+            body: JSON.stringify({ type: "WhatsApp", contactId, message: captionText }),
+          },
+          GHL_CONVERSATIONS_VERSION,
+        ),
+      );
+      captionMessageId = firstString(captionResult.messageId, captionResult.id);
+    }
+    return { ok: true, contactId, messageId: firstString(result.messageId, result.id), captionMessageId };
   });
 
 export const postState = createServerFn({ method: "POST" })
