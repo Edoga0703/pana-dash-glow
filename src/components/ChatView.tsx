@@ -9,6 +9,7 @@ import {
   Paperclip,
   Pause,
   Send,
+  UserPlus,
   UserRoundCheck,
   Zap,
 } from "lucide-react";
@@ -79,6 +80,97 @@ function MessageBubble({ message }: { message: Message }) {
   );
 }
 
+interface RegisterModalProps {
+  chat: Chat;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
+  const [nombre, setNombre] = useState(chat.name === "Sin nombre" ? "" : chat.name);
+  const [telefono, setTelefono] = useState(chat.phone || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!nombre.trim() || !telefono.trim()) {
+      setError("Nombre y teléfono son requeridos");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("https://n8n.cuentastupana.com/webhook/pana-crm-contact-v1", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CRM-SECRET": "28031597Ef.",
+        },
+        body: JSON.stringify({
+          contactId: chat.contactId,
+          nombre: nombre.trim(),
+          telefono: telefono.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "Error al registrar");
+      onSuccess();
+      onClose();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Error al registrar contacto");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-sm rounded-xl border border-white/10 bg-[#141820] p-6 shadow-2xl">
+        <h3 className="mb-4 text-sm font-semibold text-white flex items-center gap-2">
+          <UserPlus size={16} className="text-cyan-400" />
+          Registrar contacto
+        </h3>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Nombre</label>
+            <input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Nombre completo"
+              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">Teléfono WhatsApp</label>
+            <input
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              placeholder="+584121234567"
+              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
+            />
+          </div>
+          {error && <p className="text-xs text-rose-400">{error}</p>}
+          <div className="flex gap-2 justify-end mt-2">
+            <button
+              onClick={onClose}
+              className="rounded-md border border-white/10 px-4 py-2 text-xs text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-md bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
+            >
+              {saving ? "Guardando..." : "Registrar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatView({ chat, userName, onStateChanged }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +180,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [error, setError] = useState("");
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -185,6 +278,14 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[#0d1015]">
+      {showRegister && (
+        <RegisterModal
+          chat={chat}
+          onClose={() => setShowRegister(false)}
+          onSuccess={() => onStateChanged?.()}
+        />
+      )}
+
       <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/8 bg-[#141820] px-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white">{chat.name}</h2>
@@ -201,6 +302,13 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setShowRegister(true)}
+            title="Registrar contacto"
+            className="grid size-9 place-items-center rounded-md border border-white/10 text-slate-400 hover:bg-white/5 hover:text-cyan-300"
+          >
+            <UserPlus size={15} />
+          </button>
           {chat.status !== "humano" && (
             <button
               disabled={changingState}
