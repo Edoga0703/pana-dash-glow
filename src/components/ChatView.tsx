@@ -217,6 +217,16 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const chatIdRef = useRef(chat.contactId);
+  const initialUnreadRef = useRef(chat.unreadCount || 0);
+  const didInitialScrollRef = useRef(false);
+
+  const initialUnread = initialUnreadRef.current;
+  let firstUnreadId: string | null = null;
+  if (initialUnread > 0) {
+    const incoming = messages.filter((m) => m.role === "user");
+    const target = incoming[incoming.length - initialUnread];
+    firstUnreadId = target?.id || null;
+  }
 
   const trimmedQuery = searchQuery.trim();
   const matches = trimmedQuery
