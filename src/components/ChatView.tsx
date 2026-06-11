@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleUserRound,
+  Copy,
   Image,
   LoaderCircle,
   MessageSquareOff,
