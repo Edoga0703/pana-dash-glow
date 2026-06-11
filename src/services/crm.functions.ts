@@ -23,6 +23,10 @@ const stateInput = z.object({
   state: z.enum(["bot", "humano", "pausado", "pin", "unpin", "archive", "unarchive"]),
   userName: z.string().trim().min(1).max(120),
 });
+const registerInput = z.object({
+  contactId: z.string().min(1),
+  name: z.string().trim().min(1).max(200),
+});
 
 function config() {
   const baseUrl = process.env.N8N_BASE_URL || process.env.VITE_N8N_BASE_URL;
@@ -86,4 +90,10 @@ export const postState = createServerFn({ method: "POST" })
   .inputValidator(stateInput)
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-state-v1", { method: "POST", body: JSON.stringify(data) }),
+  );
+
+export const postRegister = createServerFn({ method: "POST" })
+  .inputValidator(registerInput)
+  .handler(({ data }) =>
+    crmRequest("/webhook/pana-crm-register-v1", { method: "POST", body: JSON.stringify(data) }),
   );
