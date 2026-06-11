@@ -242,21 +242,29 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [searchQuery, setSearchQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [copiedPhone, setCopiedPhone] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!pendingFile) {
-      setPendingPreview(null);
+    if (pendingFiles.length === 0) {
+      setPendingPreviews([]);
       return;
     }
-    if (pendingFile.type.startsWith("image/") || pendingFile.type.startsWith("video/")) {
-      const url = URL.createObjectURL(pendingFile);
-      setPendingPreview(url);
-      return () => URL.revokeObjectURL(url);
-    }
-    setPendingPreview(null);
-  }, [pendingFile]);
+    const urls = pendingFiles.map((f) =>
+      f.type.startsWith("image/") || f.type.startsWith("video/") ? URL.createObjectURL(f) : "",
+    );
+    setPendingPreviews(urls);
+    return () => urls.forEach((u) => u && URL.revokeObjectURL(u));
+  }, [pendingFiles]);
+
+  function addPendingFiles(files: File[] | FileList | null) {
+    if (!files) return;
+    const arr = Array.from(files);
+    if (arr.length) setPendingFiles((prev) => [...prev, ...arr]);
+  }
+  function removePendingFile(i: number) {
+    setPendingFiles((prev) => prev.filter((_, idx) => idx !== i));
+  }
 
   const copyPhone = useCallback(async () => {
     try {
