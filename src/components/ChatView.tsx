@@ -383,46 +383,69 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
-  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  async function uploadFile(file: File) {
     if (!file) return;
     setUploadingImage(true);
     setError("");
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = (reader.result as string).split(",")[1];
-          const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
-            },
-            body: JSON.stringify({
-              contactId: chat.contactId,
-              fileName: file.name,
-              mimeType: file.type,
-              base64,
-              userName,
-            }),
-          });
-          if (!response.ok) throw new Error("Error al subir el archivo");
-          const updated = await fetchChat(chat.contactId);
-          setMessages(updated);
-          onStateChanged?.();
-        } catch (reason: unknown) {
-          setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
-        } finally {
-          setUploadingImage(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      const base64: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = () => reject(new Error("Error al leer el archivo"));
+        reader.readAsDataURL(file);
+      });
+      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
+        },
+        body: JSON.stringify({
+          contactId: chat.contactId,
+          fileName: file.name || `pegado-${Date.now()}`,
+          mimeType: file.type,
+          base64,
+          userName,
+        }),
+      });
+      if (!response.ok) throw new Error("Error al subir el archivo");
+      const updated = await fetchChat(chat.contactId);
+      setMessages(updated);
+      onStateChanged?.();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Error al leer el archivo");
+      setError(reason instanceof Error ? reason.message : "No se pudo enviar el archivo");
+    } finally {
       setUploadingImage(false);
     }
+  }
+
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) await uploadFile(file);
     event.target.value = "";
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          void uploadFile(file);
+          return;
+        }
+      }
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      e.preventDefault();
+      void uploadFile(file);
+    }
   }
 
   async function handleState(state: "bot" | "humano" | "pausado") {
@@ -677,6 +700,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
                 handleSend();
               }
             }}
+            onPaste={handlePaste}
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
             rows={1}
             placeholder="Escribe una respuesta..."
             className="flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none overflow-y-auto placeholder:text-slate-600 focus:border-cyan-400/35"
