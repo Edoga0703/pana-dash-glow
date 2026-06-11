@@ -131,6 +131,68 @@ function firstString(...values: unknown[]): string | null {
   return null;
 }
 
+function toIsoDate(value: unknown): string {
+  if (typeof value === "number") return new Date(value).toISOString();
+  if (typeof value === "string" && value) return value;
+  return new Date().toISOString();
+}
+
+function messageText(message: Record<string, unknown>): string {
+  return String(message.body || message.message || message.text || message.content || "").trim();
+}
+
+function inferStatus(conversation: Record<string, unknown>): "bot" | "humano" | "pausado" {
+  const tags = Array.isArray(conversation.tags) ? conversation.tags.join(" ").toLowerCase() : "";
+  if (tags.includes("pausado")) return "pausado";
+  if (tags.includes("humano") || tags.includes("human") || tags.includes("asesor")) return "humano";
+  return "bot";
+}
+
+function mapGhlConversation(value: unknown) {
+  const conversation = asRecord(value);
+  const contactId = firstString(conversation.contactId) || "";
+  const lastMessage = firstString(conversation.lastMessageBody) || "📎 Archivo";
+  const lastMessageTs = toIsoDate(conversation.lastMessageDate || conversation.dateUpdated);
+  const status = inferStatus(conversation);
+  return {
+    contactId,
+    conversationId: firstString(conversation.id) || "",
+    name:
+      firstString(conversation.fullName, conversation.contactName, conversation.companyName) ||
+      "Sin nombre",
+    phone: firstString(conversation.phone) || "",
+    lastMessage,
+    unreadCount: typeof conversation.unreadCount === "number" ? conversation.unreadCount : 0,
+    status,
+    botActive: status === "bot",
+    humanOverride: status !== "bot",
+    lastMessageTs,
+    updatedAt: lastMessageTs,
+    pinned: conversation.starred === true,
+    archived: conversation.inbox === false,
+  };
+}
+
+function mapGhlMessage(value: unknown) {
+  const message = asRecord(value);
+  const direction = String(message.direction || message.messageDirection || "").toLowerCase();
+  const inbound = direction === "inbound";
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const appId = firstString(message.appId, asRecord(asRecord(message.meta).marketplace).appId) || "";
+  return {
+    id: firstString(message.id, message.messageId) || `${message.dateAdded || Date.now()}`,
+    role: inbound ? "user" : "assistant",
+    senderType: inbound ? "client" : appId === "6a150c338ae75824fa553336" ? "bot" : "human",
+    text: messageText(message),
+    mediaUrl: firstString(attachments[0], message.mediaUrl, message.fileUrl) || undefined,
+    attachments,
+    createdAt: toIsoDate(message.dateAdded || message.createdAt),
+    appId,
+    ghlMessageId: firstString(message.id, message.messageId) || "",
+    isRead: true,
+  };
+}
+
 function collectHttpUrls(value: unknown, urls: string[] = []): string[] {
   if (typeof value === "string" && /^https?:\/\//i.test(value)) urls.push(value);
   else if (Array.isArray(value)) value.forEach((item) => collectHttpUrls(item, urls));
@@ -208,17 +270,40 @@ async function resolveContactId(opts: {
   return newId;
 }
 
-export const getInbox = createServerFn({ method: "GET" }).handler(() =>
-  crmRequest("/webhook/pana-crm-inbox-v1"),
-);
+export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
+  const { locationId } = ghlConfig();
+  const body = asRecord(
+    await ghlFetch(
+      `/conversations/search?locationId=${encodeURIComponent(locationId)}&limit=100`,
+      {},
+      GHL_CONVERSATIONS_VERSION,
+    ),
+  );
+  const conversations = Array.isArray(body.conversations) ? body.conversations : [];
+  return { ok: true, chats: conversations.map(mapGhlConversation).filter((chat) => chat.contactId) };
+});
 
 export const getChat = createServerFn({ method: "GET" })
   .inputValidator(chatInput)
-  .handler(({ data }) =>
-    crmRequest(
-      `/webhook/pana-crm-chat-v1?contactId=${encodeURIComponent(data.contactId)}&page=${data.page}`,
-    ),
-  );
+  .handler(async ({ data }) => {
+    const conversationId = await resolveConversationId(data.contactId);
+    if (!conversationId) return { ok: true, contactId: data.contactId, page: data.page, messages: [] };
+    const body = asRecord(
+      await ghlFetch(
+        `/conversations/${encodeURIComponent(conversationId)}/messages?limit=100`,
+        {},
+        GHL_CONVERSATIONS_VERSION,
+      ),
+    );
+    const messagesBody = asRecord(body.messages);
+    const source = Array.isArray(messagesBody.messages)
+      ? messagesBody.messages
+      : Array.isArray(body.messages)
+        ? body.messages
+        : [];
+    const messages = source.map(mapGhlMessage).filter((message) => message.text || message.mediaUrl).reverse();
+    return { ok: true, contactId: data.contactId, page: data.page, messages };
+  });
 
 export const postMessage = createServerFn({ method: "POST" })
   .inputValidator(sendInput)

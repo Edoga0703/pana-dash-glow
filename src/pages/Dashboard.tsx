@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, MessageSquareText, RefreshCw, ServerOff } from "lucide-react";
 import type { Chat } from "../types";
 import { fetchInbox } from "../services/api";
-import { API_CONFIG, isCrmApiConfigured } from "../config/api";
+import { API_CONFIG } from "../config/api";
 import ChatSidebar from "../components/ChatSidebar";
 import ChatView from "../components/ChatView";
 
@@ -104,11 +104,6 @@ export default function Dashboard() {
   }, []);
 
   const loadInbox = useCallback(async (silent = false) => {
-    if (!isCrmApiConfigured) {
-      setError("Falta configurar la conexión con n8n.");
-      setLoading(false);
-      return;
-    }
     if (silent) setRefreshing(true);
     try {
       const data = await fetchInbox();
