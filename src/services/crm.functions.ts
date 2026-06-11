@@ -229,12 +229,15 @@ export const postMedia = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const contactId = await resolveContactId(data);
     const providerId = process.env.GHL_CONVERSATION_PROVIDER_ID;
-    const attachments = await uploadAttachmentUrlsToGhl(contactId, [data.mediaUrl]);
+    // Subimos a GHL para garantizar URL accesible por Twilio
+    const uploaded = await uploadAttachmentUrlsToGhl(contactId, [data.mediaUrl]).catch(
+      () => [data.mediaUrl],
+    );
     const payload: Record<string, unknown> = {
       type: "WhatsApp",
       contactId,
-      message: SILENT_MEDIA_CAPTION,
-      attachments,
+      message: " ", // Twilio requiere body no vacío; espacio simple en vez de zero-width
+      attachments: uploaded,
     };
     if (providerId) payload.conversationProviderId = providerId;
     const result = asRecord(
