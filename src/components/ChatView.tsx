@@ -22,6 +22,7 @@ import {
 import type { Chat, Message } from "../types";
 import { changeState, fetchChat, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
+import { supabase } from "@/integrations/supabase/client";
 import QuickReplies from "./QuickReplies";
 
 function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
