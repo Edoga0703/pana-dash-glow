@@ -91,3 +91,9 @@ export const postState = createServerFn({ method: "POST" })
   .handler(({ data }) =>
     crmRequest("/webhook/pana-crm-state-v1", { method: "POST", body: JSON.stringify(data) }),
   );
+
+export const postRegister = createServerFn({ method: "POST" })
+  .inputValidator(registerInput)
+  .handler(({ data }) =>
+    crmRequest("/webhook/pana-crm-register-v1", { method: "POST", body: JSON.stringify(data) }),
+  );
