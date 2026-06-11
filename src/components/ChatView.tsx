@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Chat, Message } from "../types";
 import { changeState, fetchChat, sendMessage } from "../services/api";
+import { API_CONFIG } from "../config/api";
 import QuickReplies from "./QuickReplies";
 
 interface ChatViewProps {
@@ -29,11 +30,22 @@ function formatTime(value: string): string {
     : "";
 }
 
+/* ── Detectores de tipo de media ─────────────────────────── */
+function isAudioUrl(url: string): boolean {
+  if (!url) return false;
+  return /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
+    url.includes("audio") || url.includes("ptt") || url.includes("voice");
+}
+
+function isImageUrl(url: string): boolean {
+  if (!url) return false;
+  return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+}
+
+/* ── Burbuja de mensaje ──────────────────────────────────── */
 function MessageBubble({ message }: { message: Message }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
-  const isImage =
-    message.mediaUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(message.mediaUrl);
 
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
@@ -56,13 +68,21 @@ function MessageBubble({ message }: { message: Message }) {
           <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
         )}
         {message.mediaUrl && (
-          isImage ? (
+          isAudioUrl(message.mediaUrl) ? (
+            <div className="mt-2 rounded-md bg-black/20 p-2">
+              <audio controls preload="metadata" className="h-8 w-full" style={{ minWidth: "200px", maxWidth: "300px" }}>
+                <source src={message.mediaUrl} />
+                Tu navegador no soporta audio
+              </audio>
+            </div>
+          ) : isImageUrl(message.mediaUrl) ? (
             <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
               <img
                 src={message.mediaUrl}
                 alt="adjunto"
                 className="max-w-full rounded-md border border-white/10"
                 style={{ maxHeight: 220 }}
+                loading="lazy"
               />
             </a>
           ) : (
@@ -80,6 +100,7 @@ function MessageBubble({ message }: { message: Message }) {
   );
 }
 
+/* ── Modal de registro ───────────────────────────────────── */
 interface RegisterModalProps {
   chat: Chat;
   onClose: () => void;
@@ -87,22 +108,67 @@ interface RegisterModalProps {
 }
 
 function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
-const [nombre, setNombre] = useState(chat.name === "Sin nombre" ? "" : chat.name);
-const [saving, setSaving] = useState(false);
-@@ -33,7 +121,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
-});
-const data = await response.json();
-if (!data.ok) throw new Error(data.error || "Error al registrar");
-      onSuccess();
+  const [nombre, setNombre] = useState(chat.name === "Sin nombre" ? "" : chat.name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit() {
+    if (!nombre.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-register-v1`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
+        },
+        body: JSON.stringify({
+          contactId: chat.contactId,
+          name: nombre.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "Error al registrar");
       onSuccess(nombre.trim());
-onClose();
-} catch (reason: unknown) {
-setError(reason instanceof Error ? reason.message : "Error al registrar contacto");
-@@ -92,3 +180,269 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
-</div>
-);
+      onClose();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Error al registrar contacto");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-[#181d25] p-5">
+        <h3 className="mb-3 text-sm font-semibold text-white">Registrar contacto</h3>
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre del cliente"
+          className="mb-3 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
+        />
+        <p className="mb-3 text-xs text-slate-500">Tel: {chat.phone}</p>
+        {error && <p className="mb-3 text-xs text-rose-300">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!nombre.trim() || saving}
+            className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-400 disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Registrar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
+/* ── Componente principal ────────────────────────────────── */
 export default function ChatView({ chat, userName, onStateChanged }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,13 +182,27 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
   const [nombreMostrado, setNombreMostrado] = useState(chat.name);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatIdRef = useRef(chat.contactId);
+
+  /* ── Auto-resize del textarea ────────────────────────── */
+  const adjustTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "44px";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, []);
+
+  useEffect(() => { adjustTextarea(); }, [text, adjustTextarea]);
 
   useEffect(() => {
     setNombreMostrado(chat.name);
   }, [chat.name]);
 
+  /* ── Cargar mensajes al abrir chat ───────────────────── */
   useEffect(() => {
     let active = true;
+    chatIdRef.current = chat.contactId;
     setMessages([]);
     setText("");
     setLoading(true);
@@ -135,10 +215,32 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     return () => { active = false; };
   }, [chat.contactId]);
 
+  /* ── Polling: mensajes nuevos en tiempo real ──────────── */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (chatIdRef.current !== chat.contactId) return;
+      fetchChat(chat.contactId)
+        .then((newMsgs) => {
+          if (chatIdRef.current !== chat.contactId) return;
+          setMessages((prev) => {
+            if (newMsgs.length !== prev.length) return newMsgs;
+            const lastNew = newMsgs[newMsgs.length - 1];
+            const lastOld = prev[prev.length - 1];
+            if (lastNew && lastOld && lastNew.id !== lastOld.id) return newMsgs;
+            return prev;
+          });
+        })
+        .catch(() => {});
+    }, API_CONFIG.pollingInterval);
+    return () => clearInterval(interval);
+  }, [chat.contactId]);
+
+  /* ── Scroll al fondo con mensajes nuevos ─────────────── */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  /* ── Enviar mensaje ──────────────────────────────────── */
   async function handleSend() {
     const message = text.trim();
     if (!message || sending) return;
@@ -158,6 +260,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     }
   }
 
+  /* ── Subir imagen/archivo ────────────────────────────── */
   async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -168,11 +271,11 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       reader.onload = async () => {
         try {
           const base64 = (reader.result as string).split(",")[1];
-          const response = await fetch("https://n8n.cuentastupana.com/webhook/pana-crm-media-v1", {
+          const response = await fetch(`${API_CONFIG.baseUrl}/webhook/pana-crm-media-v1`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-CRM-SECRET": "28031597Ef.",
+              [API_CONFIG.authHeaderName]: API_CONFIG.authHeaderValue,
             },
             body: JSON.stringify({
               contactId: chat.contactId,
@@ -200,6 +303,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     event.target.value = "";
   }
 
+  /* ── Cambiar estado ──────────────────────────────────── */
   async function handleState(state: "bot" | "humano" | "pausado") {
     setChangingState(true);
     setError("");
@@ -226,6 +330,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         />
       )}
 
+      {/* ── Header ────────────────────────────────────── */}
       <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/8 bg-[#141820] px-4">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white">{nombreMostrado}</h2>
@@ -280,6 +385,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         </div>
       </header>
 
+      {/* ── Mensajes ──────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {loading ? (
           <div className="grid h-full place-items-center text-slate-500">
@@ -302,12 +408,14 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
         )}
       </div>
 
+      {/* ── Error ─────────────────────────────────────── */}
       {error && (
         <div className="border-t border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-200">
           {error}
         </div>
       )}
 
+      {/* ── Footer / Input ────────────────────────────── */}
       <footer className="relative border-t border-white/8 bg-[#141820] p-3">
         {showQuickReplies && (
           <QuickReplies
@@ -343,6 +451,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             onChange={handleImageUpload}
           />
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
@@ -353,7 +462,8 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
             }}
             rows={1}
             placeholder="Escribe una respuesta..."
-            className="min-h-11 max-h-32 flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/35"
+            className="flex-1 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-100 outline-none overflow-y-auto placeholder:text-slate-600 focus:border-cyan-400/35"
+            style={{ minHeight: "44px", maxHeight: "160px" }}
           />
           <button
             disabled={!text.trim() || sending}
