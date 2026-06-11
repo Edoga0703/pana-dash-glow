@@ -470,7 +470,7 @@ export default function ChatSidebar({
             // Click + arrastrar
             let down = false, startX = 0, startScroll = 0, moved = false;
             el.addEventListener("mousedown", (e) => {
-              if ((e.target as HTMLElement).closest("button")) return;
+              if (e.button !== 0) return;
               down = true; moved = false;
               startX = e.clientX; startScroll = el.scrollLeft;
               el.style.cursor = "grabbing";
@@ -478,14 +478,17 @@ export default function ChatSidebar({
             window.addEventListener("mousemove", (e) => {
               if (!down) return;
               const dx = e.clientX - startX;
-              if (Math.abs(dx) > 3) moved = true;
-              el.scrollLeft = startScroll - dx;
+              if (!moved && Math.abs(dx) > 4) moved = true;
+              if (moved) {
+                e.preventDefault();
+                el.scrollLeft = startScroll - dx;
+              }
             });
             window.addEventListener("mouseup", () => {
+              if (!down) return;
               down = false;
               el.style.cursor = "";
               if (moved) {
-                // Evitar que el siguiente click dispare un botón
                 const blocker = (ev: MouseEvent) => { ev.stopPropagation(); ev.preventDefault(); };
                 window.addEventListener("click", blocker, { capture: true, once: true });
               }
