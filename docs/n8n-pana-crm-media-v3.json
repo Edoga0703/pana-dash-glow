@@ -1,0 +1,175 @@
+{
+  "name": "Pana CRM - POST Media v3 (GHL Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pana-crm-media-v1",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "132a54da-db06-493e-aada-b983b15c0f5e",
+      "name": "POST CRM Media",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [3424, 1264],
+      "webhookId": "pana-crm-media-v1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "iOpDyoCiU4IAUuCr",
+          "name": "Pana CRM Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst contactId = String(body.contactId || '').trim();\nconst base64 = String(body.base64 || '').trim();\nconst fileName = String(body.fileName || 'archivo').trim().replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);\nconst mimeType = String(body.mimeType || 'application/octet-stream').trim().slice(0, 120);\nconst caption = String(body.caption || '').trim().slice(0, 1024);\nconst userName = String(body.userName || 'Administrador CRM').trim().slice(0, 120);\nconst validId = /^[A-Za-z0-9_-]{1,128}$/.test(contactId);\nconst validB64 = base64.length > 10;\nif (!validId || !validB64) {\n  return [{ json: { ok: false, status: 400, error: 'Payload invalido (contactId/base64)' } }];\n}\nreturn [{ json: { ok: true, contactId, base64, fileName, mimeType, caption, userName } }];"
+      },
+      "id": "bf8380b7-1af8-4e46-b3ef-6319869dacc3",
+      "name": "Validar Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3648, 1264]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8d039b3d-2c70-4685-92b6-abc2b7411c08",
+      "name": "Media Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3872, 1264]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\n\nconst item = $input.first().json;\nconst base64 = item.base64;\nconst fileName = item.fileName;\nconst contactId = item.contactId;\nconst userName = item.userName;\nconst mimeType = item.mimeType;\nconst caption = item.caption || '';\n\nconst timestamp = Date.now();\nconst random = Math.random().toString(36).substring(2, 10);\nconst safeFileName = timestamp + '-' + random + '-' + fileName.replace(/[^a-zA-Z0-9._-]/g, '_');\nconst filePath = '/var/www/media/' + safeFileName;\nconst mediaUrl = 'https://crm.cuentastupana.com/media/' + safeFileName;\n\nconst buffer = Buffer.from(base64, 'base64');\nfs.writeFileSync(filePath, buffer);\nfs.chmodSync(filePath, 0o644);\n\nconsole.log('MEDIA: guardado en', filePath, '| url:', mediaUrl);\n\nreturn [{ json: { contactId, mediaUrl, mimeType, fileName: safeFileName, caption, userName } }];"
+      },
+      "id": "351b54fd-b984-4dce-9d95-3abc6f2f3395",
+      "name": "Guardar en VPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4080, 1200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/hooks/kupbKK4kp08FHWdY16yi/webhook-trigger/df83ed1f-30bb-4947-8ca8-cd79079433c4",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contactId: $json.contactId, image_url: $json.mediaUrl, caption: $json.caption || '', mime_type: $json.mimeType, file_name: $json.fileName }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1c1a24bb-c5d2-41d0-94ef-f8899eddca65",
+      "name": "GHL Webhook - Enviar Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4304, 1200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO historial_mensajes\n  (contact_id, role, text, media_url, app_id, sender_type, is_read)\nVALUES (\n  '{{ $(\"Guardar en VPS\").first().json.contactId }}',\n  'assistant',\n  '{{ ($(\"Guardar en VPS\").first().json.caption || \"\").replace(/'/g, \"''\") }}',\n  '{{ $(\"Guardar en VPS\").first().json.mediaUrl }}',\n  '6a292eaaab6c8cd2b6a8232a',\n  'human',\n  TRUE\n)\nON CONFLICT DO NOTHING;\nSELECT '{{ $(\"Guardar en VPS\").first().json.mediaUrl }}' AS media_url;",
+        "options": {}
+      },
+      "id": "39493af1-20e5-4d67-82bb-f1e0d335fd12",
+      "name": "DB - Registrar Media",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4528, 1200],
+      "credentials": {
+        "postgres": {
+          "id": "jugYWhG4yG8FCO0l",
+          "name": "PostgreSQL VPS Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, mediaUrl: $('Guardar en VPS').first().json.mediaUrl } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "113f02c8-e4d6-4e5b-ba6f-4d43e8cd0e57",
+      "name": "Responder Media OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4752, 1200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.error || 'Payload invalido' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "4c229ede-f94b-481e-959a-6f130682852d",
+      "name": "Error Media",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [4080, 1360]
+    }
+  ],
+  "connections": {
+    "POST CRM Media": {
+      "main": [[{ "node": "Validar Media", "type": "main", "index": 0 }]]
+    },
+    "Validar Media": {
+      "main": [[{ "node": "Media Valida?", "type": "main", "index": 0 }]]
+    },
+    "Media Valida?": {
+      "main": [
+        [{ "node": "Guardar en VPS", "type": "main", "index": 0 }],
+        [{ "node": "Error Media", "type": "main", "index": 0 }]
+      ]
+    },
+    "Guardar en VPS": {
+      "main": [[{ "node": "GHL Webhook - Enviar Media", "type": "main", "index": 0 }]]
+    },
+    "GHL Webhook - Enviar Media": {
+      "main": [[{ "node": "DB - Registrar Media", "type": "main", "index": 0 }]]
+    },
+    "DB - Registrar Media": {
+      "main": [[{ "node": "Responder Media OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "04b2d05192da52bb8bcac49140fa171412a705f4fd0c0f7da845666c18802b76"
+  }
+}
