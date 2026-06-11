@@ -69,6 +69,7 @@ async function crmRequest(path: string, init: RequestInit = {}): Promise<any> {
 // ───────────── GHL helpers ─────────────
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_VERSION = "2021-04-15";
+const GHL_CONVERSATIONS_VERSION = "2021-04-15";
 
 function ghlConfig() {
   const apiKey = process.env.GHL_API_KEY;
