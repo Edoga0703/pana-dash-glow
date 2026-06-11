@@ -289,7 +289,7 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       .catch((reason) => active && setError(reason.message || "No se pudo cargar el historial"))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [chat.contactId, chat.unreadCount]);
+  }, [chat.contactId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
