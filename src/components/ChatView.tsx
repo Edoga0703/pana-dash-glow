@@ -66,13 +66,66 @@ function formatTime(value: string): string {
 
 function isAudioUrl(url: string): boolean {
   if (!url) return false;
-  return /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
-    url.includes("audio") || url.includes("ptt") || url.includes("voice");
+  return (
+    /\.(ogg|mp3|m4a|wav|opus|mp4)(\?|$)/i.test(url) ||
+    url.includes("audio") ||
+    url.includes("ptt") ||
+    url.includes("voice")
+  );
 }
 
 function isImageUrl(url: string): boolean {
   if (!url) return false;
   return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+}
+
+type RenderableAttachment = { url: string; name?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function attachmentFrom(value: unknown): RenderableAttachment | null {
+  if (typeof value === "string") return /^https?:\/\//i.test(value) ? { url: value } : null;
+  if (!isRecord(value)) return null;
+  const url =
+    value.url ||
+    value.mediaUrl ||
+    value.attachmentUrl ||
+    value.attachment_url ||
+    value.fileUrl ||
+    value.file_url ||
+    value.publicUrl ||
+    value.public_url ||
+    value.link ||
+    value.src;
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return null;
+  const name = value.name || value.fileName || value.filename || value.title;
+  return { url, name: typeof name === "string" ? name : undefined };
+}
+
+function getMessageAttachments(message: Message): RenderableAttachment[] {
+  const msg = message as Message & { files?: unknown; media?: unknown; meta?: unknown };
+  const values: unknown[] = [];
+  const add = (value: unknown) => {
+    if (Array.isArray(value)) values.push(...value);
+    else if (value) values.push(value);
+  };
+  add(message.mediaUrl);
+  add(message.attachments);
+  add(message.attachmentUrls);
+  add(msg.files);
+  add(msg.media);
+  add(msg.meta);
+  const seen = new Set<string>();
+  return values
+    .map(attachmentFrom)
+    .filter((item): item is RenderableAttachment => !!item)
+    .filter((item) => (seen.has(item.url) ? false : (seen.add(item.url), true)));
+}
+
+function isAttachmentSummary(text: string): boolean {
+  return /^\(?\s*\d+\s+anexos?\s+enviad[oa]s?\s*\)?$/i.test(text.trim());
 }
 
 function highlightText(text: string, query: string): React.ReactNode {
@@ -101,6 +154,8 @@ function highlightText(text: string, query: string): React.ReactNode {
 function MessageBubble({ message, highlight }: { message: Message; highlight?: string }) {
   const incoming = message.role === "user";
   const human = message.senderType === "human";
+  const attachments = getMessageAttachments(message);
+  const showText = !!message.text && !(attachments.length > 0 && isAttachmentSummary(message.text));
 
   return (
     <div className={`flex ${incoming ? "justify-start" : "justify-end"}`}>
@@ -119,34 +174,61 @@ function MessageBubble({ message, highlight }: { message: Message; highlight?: s
             {human ? "Administrador" : "Pana Bot"}
           </div>
         )}
-        {message.text && (
+        {showText && (
           <p className="whitespace-pre-wrap break-words text-sm leading-5">
             {highlight ? highlightText(message.text, highlight) : message.text}
           </p>
         )}
-        {message.mediaUrl && (
-          isAudioUrl(message.mediaUrl) ? (
-            <div className="mt-2 rounded-md bg-black/20 p-2">
-              <audio controls preload="metadata" className="h-8 w-full" style={{ minWidth: "200px", maxWidth: "300px" }}>
-                <source src={message.mediaUrl} />
-                Tu navegador no soporta audio
-              </audio>
-            </div>
-          ) : isImageUrl(message.mediaUrl) ? (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block">
-              <img
-                src={message.mediaUrl}
-                alt="adjunto"
-                className="max-w-full rounded-md border border-white/10"
-                style={{ maxHeight: 220 }}
-                loading="lazy"
-              />
-            </a>
-          ) : (
-            <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-1.5 text-xs text-cyan-300 underline">
-              <Paperclip size={12} /> Abrir archivo adjunto
-            </a>
-          )
+        {attachments.length > 0 && (
+          <div className={showText ? "mt-2 space-y-2" : "space-y-2"}>
+            {attachments.map((attachment) => {
+              if (isAudioUrl(attachment.url)) {
+                return (
+                  <div key={attachment.url} className="rounded-md bg-black/20 p-2">
+                    <audio
+                      controls
+                      preload="metadata"
+                      className="h-8 w-full"
+                      style={{ minWidth: "200px", maxWidth: "300px" }}
+                    >
+                      <source src={attachment.url} />
+                      Tu navegador no soporta audio
+                    </audio>
+                  </div>
+                );
+              }
+              if (isImageUrl(attachment.url)) {
+                return (
+                  <a
+                    key={attachment.url}
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block"
+                  >
+                    <img
+                      src={attachment.url}
+                      alt={attachment.name || "adjunto"}
+                      className="max-w-full rounded-md border border-white/10"
+                      style={{ maxHeight: 220 }}
+                      loading="lazy"
+                    />
+                  </a>
+                );
+              }
+              return (
+                <a
+                  key={attachment.url}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-cyan-300 underline"
+                >
+                  <Paperclip size={12} /> {attachment.name || "Abrir archivo adjunto"}
+                </a>
+              );
+            })}
+          </div>
         )}
         <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-50">
           {formatTime(message.createdAt)}
