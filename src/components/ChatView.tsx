@@ -303,7 +303,7 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
 }
 
 export default function ChatView({ chat, userName, agentId, onStateChanged }: ChatViewProps) {
-  const { assignment, takeChat, logSentMessage, reload: reloadAssignment } = useChatAssignment(chat.contactId);
+  const { assignment, takeChat, logSentMessage } = useChatAssignment(chat.contactId);
   const [assignmentAvatarSrc, setAssignmentAvatarSrc] = useState<string | null>(null);
 
   useEffect(() => {
