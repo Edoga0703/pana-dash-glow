@@ -208,7 +208,8 @@ export default function Dashboard() {
               <div className="min-h-0 flex-1">
                 <ChatView
                   chat={selected}
-                  userName={USER_NAME}
+                  userName={userName}
+                  agentId={user?.id ?? null}
                   onStateChanged={() => loadInbox(true)}
                 />
               </div>
