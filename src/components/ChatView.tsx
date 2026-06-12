@@ -605,6 +605,9 @@ export default function ChatView({ chat, userName, agentId, onStateChanged }: Ch
     setError("");
     try {
       await changeState({ contactId: chat.contactId, state, userName });
+      if (state === "humano" && agentId) {
+        try { await takeChat(agentId); } catch {}
+      }
       onStateChanged?.();
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "No se pudo cambiar el estado");
