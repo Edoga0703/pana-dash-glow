@@ -14,7 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_assignments: {
+        Row: {
+          agent_id: string
+          contact_id: string
+          taken_at: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          contact_id: string
+          taken_at?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          contact_id?: string
+          taken_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sent_messages: {
+        Row: {
+          agent_id: string
+          contact_id: string
+          id: string
+          sent_at: string
+          text: string
+        }
+        Insert: {
+          agent_id: string
+          contact_id: string
+          id?: string
+          sent_at?: string
+          text?: string
+        }
+        Update: {
+          agent_id?: string
+          contact_id?: string
+          id?: string
+          sent_at?: string
+          text?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
