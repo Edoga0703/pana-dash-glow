@@ -5,8 +5,8 @@ import { fetchInbox } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import ChatSidebar from "../components/ChatSidebar";
 import ChatView from "../components/ChatView";
-
-const USER_NAME = "Administrador";
+import AgentBadge from "../components/AgentBadge";
+import { useAgentProfile, useAgentSession } from "../hooks/useAgentProfile";
 
 // Beep corto generado in-memory (sin assets externos)
 function playBeep() {
