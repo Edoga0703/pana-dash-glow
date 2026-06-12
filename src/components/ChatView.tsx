@@ -654,6 +654,15 @@ export default function ChatView({ chat, userName, agentId, onStateChanged }: Ch
                   ? "Atención humana"
                   : "Chat pausado"}
             </span>
+            {assignment && (
+              <>
+                <span>·</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 py-0.5 pl-0.5 pr-2 text-[11px] text-emerald-200">
+                  <Avatar src={assignmentAvatarSrc} name={assignment.agent_name} size={16} />
+                  <span className="font-medium">{assignment.agent_name}</span>
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
