@@ -58,6 +58,7 @@ function PhoneCopy({ phone, className = "" }: { phone: string; className?: strin
 interface ChatViewProps {
   chat: Chat;
   userName: string;
+  agentId: string | null;
   onStateChanged?: () => void;
 }
 
