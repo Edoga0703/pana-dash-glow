@@ -23,6 +23,9 @@ import type { Chat, Message } from "../types";
 import { changeState, fetchChat, registerContact, sendMedia, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import { supabase } from "@/integrations/supabase/client";
+import { useChatAssignment } from "../hooks/useChatAssignment";
+import { resolveAvatarSrc } from "../hooks/useAgentProfile";
+import { Avatar } from "./AgentBadge";
 import QuickReplies from "./QuickReplies";
 
 function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
