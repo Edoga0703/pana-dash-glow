@@ -170,7 +170,13 @@ export default function Dashboard() {
 
   return (
     <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
+      <div className="pointer-events-none absolute right-3 top-3 z-30">
+        <div className="pointer-events-auto">
+          <AgentBadge profile={profile} onProfileUpdated={reloadProfile} />
+        </div>
+      </div>
       <div className="flex h-full min-h-0">
+
         <div
           className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0 md:!w-[var(--sidebar-w)]`}
           style={{ ["--sidebar-w" as never]: `${sidebarWidth}px` }}
