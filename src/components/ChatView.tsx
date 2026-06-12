@@ -302,7 +302,19 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
   );
 }
 
-export default function ChatView({ chat, userName, onStateChanged }: ChatViewProps) {
+export default function ChatView({ chat, userName, agentId, onStateChanged }: ChatViewProps) {
+  const { assignment, takeChat, logSentMessage, reload: reloadAssignment } = useChatAssignment(chat.contactId);
+  const [assignmentAvatarSrc, setAssignmentAvatarSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let m = true;
+    resolveAvatarSrc(assignment?.agent_avatar_url ?? null).then((s) => {
+      if (m) setAssignmentAvatarSrc(s);
+    });
+    return () => {
+      m = false;
+    };
+  }, [assignment?.agent_avatar_url]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
