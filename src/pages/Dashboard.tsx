@@ -44,6 +44,9 @@ const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 360;
 
 export default function Dashboard() {
+  const { user } = useAgentSession();
+  const { profile, reload: reloadProfile } = useAgentProfile(user?.id);
+  const userName = profile?.display_name || "Agente";
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
