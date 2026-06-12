@@ -23,6 +23,9 @@ import type { Chat, Message } from "../types";
 import { changeState, fetchChat, registerContact, sendMedia, sendMessage } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import { supabase } from "@/integrations/supabase/client";
+import { useChatAssignment } from "../hooks/useChatAssignment";
+import { resolveAvatarSrc } from "../hooks/useAgentProfile";
+import { Avatar } from "./AgentBadge";
 import QuickReplies from "./QuickReplies";
 
 function PhoneCopy({ phone, className = "" }: { phone: string; className?: string }) {
@@ -55,6 +58,7 @@ function PhoneCopy({ phone, className = "" }: { phone: string; className?: strin
 interface ChatViewProps {
   chat: Chat;
   userName: string;
+  agentId: string | null;
   onStateChanged?: () => void;
 }
 
@@ -298,7 +302,19 @@ function RegisterModal({ chat, onClose, onSuccess }: RegisterModalProps) {
   );
 }
 
-export default function ChatView({ chat, userName, onStateChanged }: ChatViewProps) {
+export default function ChatView({ chat, userName, agentId, onStateChanged }: ChatViewProps) {
+  const { assignment, takeChat, logSentMessage } = useChatAssignment(chat.contactId);
+  const [assignmentAvatarSrc, setAssignmentAvatarSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let m = true;
+    resolveAvatarSrc(assignment?.agent_avatar_url ?? null).then((s) => {
+      if (m) setAssignmentAvatarSrc(s);
+    });
+    return () => {
+      m = false;
+    };
+  }, [assignment?.agent_avatar_url]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
@@ -480,6 +496,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
       setPendingFiles(remaining);
       if (message && !hasFiles) {
         await sendMessage({ contactId, phone: chat.phone, name: chat.name, text: message, userName });
+        if (agentId) {
+          try { await logSentMessage(agentId, message); } catch {}
+        }
       }
       const updated = await fetchChat(contactId);
       if (chat.contactId === contactId) setMessages(updated);
@@ -586,6 +605,9 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
     setError("");
     try {
       await changeState({ contactId: chat.contactId, state, userName });
+      if (state === "humano" && agentId) {
+        try { await takeChat(agentId); } catch {}
+      }
       onStateChanged?.();
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "No se pudo cambiar el estado");
@@ -632,6 +654,15 @@ export default function ChatView({ chat, userName, onStateChanged }: ChatViewPro
                   ? "Atención humana"
                   : "Chat pausado"}
             </span>
+            {assignment && (
+              <>
+                <span>·</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 py-0.5 pl-0.5 pr-2 text-[11px] text-emerald-200">
+                  <Avatar src={assignmentAvatarSrc} name={assignment.agent_name} size={16} />
+                  <span className="font-medium">{assignment.agent_name}</span>
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

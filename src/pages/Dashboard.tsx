@@ -5,8 +5,8 @@ import { fetchInbox } from "../services/api";
 import { API_CONFIG } from "../config/api";
 import ChatSidebar from "../components/ChatSidebar";
 import ChatView from "../components/ChatView";
-
-const USER_NAME = "Administrador";
+import AgentBadge from "../components/AgentBadge";
+import { useAgentProfile, useAgentSession } from "../hooks/useAgentProfile";
 
 // Beep corto generado in-memory (sin assets externos)
 function playBeep() {
@@ -44,6 +44,9 @@ const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 360;
 
 export default function Dashboard() {
+  const { user } = useAgentSession();
+  const { profile, reload: reloadProfile } = useAgentProfile(user?.id);
+  const userName = profile?.display_name || "Agente";
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,7 +170,13 @@ export default function Dashboard() {
 
   return (
     <main className="h-dvh overflow-hidden bg-[#0b141a] text-slate-100">
+      <div className="pointer-events-none absolute right-3 top-3 z-30">
+        <div className="pointer-events-auto">
+          <AgentBadge profile={profile} onProfileUpdated={reloadProfile} />
+        </div>
+      </div>
       <div className="flex h-full min-h-0">
+
         <div
           className={`${selected ? "hidden md:block" : "block w-full"} min-h-0 shrink-0 md:!w-[var(--sidebar-w)]`}
           style={{ ["--sidebar-w" as never]: `${sidebarWidth}px` }}
@@ -205,7 +214,8 @@ export default function Dashboard() {
               <div className="min-h-0 flex-1">
                 <ChatView
                   chat={selected}
-                  userName={USER_NAME}
+                  userName={userName}
+                  agentId={user?.id ?? null}
                   onStateChanged={() => loadInbox(true)}
                 />
               </div>
