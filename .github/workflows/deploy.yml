@@ -23,5 +23,7 @@ jobs:
               --build-arg VITE_N8N_BASE_URL=https://n8n.cuentastupana.com \
               --build-arg VITE_AUTH_HEADER_NAME=X-CRM-SECRET \
               --build-arg VITE_AUTH_HEADER_VALUE=28031597Ef. \
+              --build-arg VITE_SUPABASE_URL=https://supabase.cuentastupana.com \
+              --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE \
               crm
             docker compose up -d crm
